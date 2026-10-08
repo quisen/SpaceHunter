@@ -19,11 +19,25 @@ pub struct Camera {
 
 impl Camera {
     pub fn for_map(w: f32, h: f32) -> Self {
-        Camera { yaw: 0.6, pitch: 0.75, dist: w.max(h) * 1.25, target: [w / 2.0, 0.0, h / 2.0] }
+        Camera {
+            yaw: 0.6,
+            pitch: 0.75,
+            dist: w.max(h) * 1.25,
+            target: [w / 2.0, 0.0, h / 2.0],
+        }
     }
     pub fn eye(&self) -> [f32; 3] {
-        let (cp, sp, cy, sy) = (self.pitch.cos(), self.pitch.sin(), self.yaw.cos(), self.yaw.sin());
-        [self.target[0] + self.dist * cp * sy, self.target[1] + self.dist * sp, self.target[2] + self.dist * cp * cy]
+        let (cp, sp, cy, sy) = (
+            self.pitch.cos(),
+            self.pitch.sin(),
+            self.yaw.cos(),
+            self.yaw.sin(),
+        );
+        [
+            self.target[0] + self.dist * cp * sy,
+            self.target[1] + self.dist * sp,
+            self.target[2] + self.dist * cp * cy,
+        ]
     }
     pub fn view_proj(&self, aspect: f32) -> [f32; 16] {
         let eye = self.eye();
@@ -37,7 +51,11 @@ fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -53,12 +71,44 @@ fn look_at(eye: [f32; 3], at: [f32; 3], up: [f32; 3]) -> [f32; 16] {
     let s = norm(cross(f, up));
     let u = cross(s, f);
     [
-        s[0], u[0], -f[0], 0.0, s[1], u[1], -f[1], 0.0, s[2], u[2], -f[2], 0.0, -dot(s, eye), -dot(u, eye), dot(f, eye), 1.0,
+        s[0],
+        u[0],
+        -f[0],
+        0.0,
+        s[1],
+        u[1],
+        -f[1],
+        0.0,
+        s[2],
+        u[2],
+        -f[2],
+        0.0,
+        -dot(s, eye),
+        -dot(u, eye),
+        dot(f, eye),
+        1.0,
     ]
 }
 fn perspective(fovy: f32, aspect: f32, n: f32, f: f32) -> [f32; 16] {
     let t = 1.0 / (fovy / 2.0).tan();
-    [t / aspect, 0.0, 0.0, 0.0, 0.0, t, 0.0, 0.0, 0.0, 0.0, (f + n) / (n - f), -1.0, 0.0, 0.0, 2.0 * f * n / (n - f), 0.0]
+    [
+        t / aspect,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        t,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        (f + n) / (n - f),
+        -1.0,
+        0.0,
+        0.0,
+        2.0 * f * n / (n - f),
+        0.0,
+    ]
 }
 fn mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     let mut r = [0.0; 16];
@@ -83,10 +133,22 @@ pub struct HeightStyle {
     pub scale: f32,
 }
 
-pub fn build_boxes(cells: &[Cell], tree: &Tree, cc: &ColorCtx, extent: [f32; 2], hs: &HeightStyle) -> Boxes {
+pub fn build_boxes(
+    cells: &[Cell],
+    tree: &Tree,
+    cc: &ColorCtx,
+    extent: [f32; 2],
+    hs: &HeightStyle,
+) -> Boxes {
     let slab = 3.0f32;
     let hmax = extent[0].min(extent[1]) * 0.25 * hs.scale;
-    let max = cells.iter().filter(|c| c.kind == CellKind::File).map(|c| c.size).max().unwrap_or(1).max(1) as f32;
+    let max = cells
+        .iter()
+        .filter(|c| c.kind == CellKind::File)
+        .map(|c| c.size)
+        .max()
+        .unwrap_or(1)
+        .max(1) as f32;
     let mut data = Vec::with_capacity(cells.len() * FLOATS);
     let mut cell_of = Vec::with_capacity(cells.len());
     for (i, c) in cells.iter().enumerate() {
@@ -97,7 +159,11 @@ pub fn build_boxes(cells: &[Cell], tree: &Tree, cc: &ColorCtx, extent: [f32; 2],
             CellKind::Lump => (slab * 1.5, cc.leaf(tree, c)),
             _ => {
                 let rel = (c.size as f32 / max).sqrt();
-                let h = if hs.by_size { slab + hmax * rel } else { slab * 4.0 };
+                let h = if hs.by_size {
+                    slab + hmax * rel
+                } else {
+                    slab * 4.0
+                };
                 (h, cc.leaf(tree, c))
             }
         };
@@ -105,10 +171,24 @@ pub fn build_boxes(cells: &[Cell], tree: &Tree, cc: &ColorCtx, extent: [f32; 2],
         if c.w <= g * 2.0 || c.h <= g * 2.0 {
             continue;
         }
-        data.extend_from_slice(&[c.x + g, c.y + g, c.w - g * 2.0, c.h - g * 2.0, base, h, col[0], col[1], col[2]]);
+        data.extend_from_slice(&[
+            c.x + g,
+            c.y + g,
+            c.w - g * 2.0,
+            c.h - g * 2.0,
+            base,
+            h,
+            col[0],
+            col[1],
+            col[2],
+        ]);
         cell_of.push(i as u32);
     }
-    Boxes { data, cell_of, extent }
+    Boxes {
+        data,
+        cell_of,
+        extent,
+    }
 }
 
 /// Slab-method ray/box test; returns instance index of nearest hit.
@@ -152,7 +232,11 @@ pub fn ray(cam: &Camera, size: egui::Vec2, p: egui::Vec2) -> ([f32; 3], [f32; 3]
     let t = (0.8f32 / 2.0).tan();
     let nx = (p.x / size.x * 2.0 - 1.0) * t * (size.x / size.y);
     let ny = (1.0 - p.y / size.y * 2.0) * t;
-    let d = norm([f[0] + s[0] * nx + u[0] * ny, f[1] + s[1] * nx + u[1] * ny, f[2] + s[2] * nx + u[2] * ny]);
+    let d = norm([
+        f[0] + s[0] * nx + u[0] * ny,
+        f[1] + s[1] * nx + u[1] * ny,
+        f[2] + s[2] * nx + u[2] * ny,
+    ]);
     (eye, d)
 }
 
@@ -235,7 +319,15 @@ pub struct Shared {
 
 impl Default for Shared {
     fn default() -> Self {
-        Shared { gpu: None, data: Vec::new(), rev: 0, hover: -1, sel: -1, mvp: [0.0; 16], clear: [0.0; 3] }
+        Shared {
+            gpu: None,
+            data: Vec::new(),
+            rev: 0,
+            hover: -1,
+            sel: -1,
+            mvp: [0.0; 16],
+            clear: [0.0; 3],
+        }
     }
 }
 
@@ -243,7 +335,11 @@ pub type SharedRef = Arc<Mutex<Shared>>;
 
 fn compile(gl: &glow::Context) -> Result<glow::Program, String> {
     let es = gl.version().is_embedded;
-    let header = if es { "#version 300 es\nprecision highp float;\nprecision highp int;\n" } else { "#version 330 core\n" };
+    let header = if es {
+        "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+    } else {
+        "#version 330 core\n"
+    };
     unsafe {
         let prog = gl.create_program()?;
         let mut shaders = Vec::new();
@@ -290,7 +386,13 @@ fn init(gl: &glow::Context) -> Option<Gpu> {
         }
         gl.bind_vertex_array(None);
         gl.bind_buffer(glow::ARRAY_BUFFER, None);
-        Some(Gpu { prog, vao, vbo, count: 0, uploaded_rev: u64::MAX })
+        Some(Gpu {
+            prog,
+            vao,
+            vbo,
+            count: 0,
+            uploaded_rev: u64::MAX,
+        })
     }
 }
 
@@ -307,7 +409,8 @@ pub fn paint(painter: &egui::Painter, rect: egui::Rect, shared: SharedRef) {
         unsafe {
             if g.uploaded_rev != s.rev {
                 gl.bind_buffer(glow::ARRAY_BUFFER, Some(g.vbo));
-                let bytes: &[u8] = std::slice::from_raw_parts(s.data.as_ptr() as *const u8, s.data.len() * 4);
+                let bytes: &[u8] =
+                    std::slice::from_raw_parts(s.data.as_ptr() as *const u8, s.data.len() * 4);
                 gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes, glow::DYNAMIC_DRAW);
                 g.count = (s.data.len() / FLOATS) as i32;
                 g.uploaded_rev = s.rev;
@@ -324,7 +427,11 @@ pub fn paint(painter: &egui::Painter, rect: egui::Rect, shared: SharedRef) {
             gl.disable(glow::BLEND);
             gl.disable(glow::CULL_FACE);
             gl.use_program(Some(g.prog));
-            gl.uniform_matrix_4_f32_slice(gl.get_uniform_location(g.prog, "u_mvp").as_ref(), false, &s.mvp);
+            gl.uniform_matrix_4_f32_slice(
+                gl.get_uniform_location(g.prog, "u_mvp").as_ref(),
+                false,
+                &s.mvp,
+            );
             gl.uniform_1_i32(gl.get_uniform_location(g.prog, "u_hover").as_ref(), s.hover);
             gl.uniform_1_i32(gl.get_uniform_location(g.prog, "u_sel").as_ref(), s.sel);
             gl.bind_vertex_array(Some(g.vao));
@@ -334,5 +441,8 @@ pub fn paint(painter: &egui::Painter, rect: egui::Rect, shared: SharedRef) {
             gl.disable(glow::DEPTH_TEST);
         }
     });
-    painter.add(egui::PaintCallback { rect, callback: Arc::new(cb) });
+    painter.add(egui::PaintCallback {
+        rect,
+        callback: Arc::new(cb),
+    });
 }

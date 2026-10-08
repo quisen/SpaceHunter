@@ -1,5 +1,6 @@
 mod app;
 mod colors;
+mod i18n;
 mod platform;
 mod render2d;
 mod render3d;
@@ -25,7 +26,20 @@ mod entry {
         let mut opts = eframe::WebOptions::default();
         opts.depth_buffer = 24;
         eframe::WebRunner::new()
-            .start(canvas, opts, Box::new(move |cc| Ok(Box::new(SpaceHunter::new(cc, Args { demo, mode3d, ..Default::default() })))))
+            .start(
+                canvas,
+                opts,
+                Box::new(move |cc| {
+                    Ok(Box::new(SpaceHunter::new(
+                        cc,
+                        Args {
+                            demo,
+                            mode3d,
+                            ..Default::default()
+                        },
+                    )))
+                }),
+            )
             .await
     }
 }

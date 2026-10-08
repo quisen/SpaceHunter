@@ -1,53 +1,43 @@
 #!/usr/bin/env python3
-"""Generates the SpaceHunter icons (PNG, no dependencies): a small treemap tile."""
-import struct, zlib, sys, os
+"""Render the Space Hunter vector mark to PNG, using only the standard library."""
+import os
+import struct
+import sys
+import zlib
+
 
 def png(path, size, maskable=False):
-    s = size
-    pal = [(0xff,0x7f,0x7f),(0xff,0xbf,0x7f),(0xff,0xe0,0x3a),(0x7f,0xe8,0x7f),(0x7f,0xe0,0xf0),(0xaf,0xaf,0xff),(0xe8,0x7f,0xe8)]
-    # treemap-like partition of the unit square: (x0,y0,x1,y1,colour)
-    tiles = [(0,0,.58,.62,0),(.58,0,1,.38,5),(.58,.38,1,.62,4),(0,.62,.34,1,1),(.34,.62,.7,1,2),(.7,.62,1,.81,3),(.7,.81,1,1,6)]
-    pad = .14 if maskable else .0
-    bg = (0x12,0x16,0x20)
+    def pixel(x, y):
+        # The maskable icon keeps the entire mark inside the central safe area.
+        if maskable:
+            x, y = (x - 8) * 64 / 48, (y - 8) * 64 / 48
+        cx, cy = min(max(x, 16), 48), min(max(y, 16), 48)
+        if (x-cx)**2 + (y-cy)**2 > 16**2:
+            return (111, 65, 199, 255 if maskable else 0)
+        if (16 <= x < 39 and 16 <= y < 26) or (16 <= x < 26 and 26 <= y < 32) or (28 <= x < 48 and 29 <= y < 35) or (38 <= x < 48 and 35 <= y < 48) or (25 <= x < 38 and 38 <= y < 48):
+            return (241, 238, 230, 255)
+        if (43.5 <= x <= 53.5 and 10.5 <= y <= 13.5) or (50.5 <= x <= 53.5 and 10.5 <= y <= 20.5):
+            return (217, 182, 111, 255)
+        return (111, 65, 199, 255)
+
     rows = []
-    for y in range(s):
+    for y in range(size):
         row = bytearray([0])
-        for x in range(s):
-            u, v = x / s, y / s
-            px = None
-            if maskable:
-                u, v = (u - pad) / (1 - 2*pad), (v - pad) / (1 - 2*pad)
-            if 0 <= u < 1 and 0 <= v < 1:
-                for (a,b,c,d,ci) in tiles:
-                    g = 0.012
-                    if a+g <= u < c-g and b+g <= v < d-g:
-                        base = pal[ci]
-                        # bevel: light top-left, dark bottom-right
-                        t = ((u-a)/(c-a) + (v-b)/(d-b)) / 2
-                        k = 1.12 - 0.34 * t
-                        px = tuple(min(255, int(ch * k)) for ch in base)
-                        break
-            if px is None:
-                # rounded square background (transparent corners when not maskable)
-                if not maskable:
-                    r = .18
-                    cx, cy = min(max(x/s, r), 1-r), min(max(y/s, r), 1-r)
-                    inside = ((x/s-cx)**2 + (y/s-cy)**2) <= r*r
-                    row += bytes(bg + (255 if inside else 0,))
-                    continue
-                px = bg
-            row += bytes(px + (255,))
+        for x in range(size):
+            samples = [pixel((x+(i+.5)/4)*64/size, (y+(j+.5)/4)*64/size) for j in range(4) for i in range(4)]
+            row.extend(round(sum(p[c] for p in samples)/16) for c in range(4))
         rows.append(bytes(row))
-    def ch(t, d):
-        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
-    data = b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', s, s, 8, 6, 0, 0, 0)) + ch(b'IDAT', zlib.compress(b''.join(rows), 9)) + ch(b'IEND', b'')
-    open(path, 'wb').write(data)
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+    data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(b''.join(rows), 9)) + chunk(b'IEND', b'')
+    with open(path, 'wb') as output:
+        output.write(data)
+
 
 out = sys.argv[1] if len(sys.argv) > 1 else 'web/icons'
 os.makedirs(out, exist_ok=True)
-png(f'{out}/icon-192.png', 192)
-png(f'{out}/icon-512.png', 512)
-png(f'{out}/maskable-512.png', 512, True)
-png(f'{out}/favicon-32.png', 32)
-png(f'{out}/app-256.png', 256)  # source for the Windows .ico
+for name, size in [('icon-192', 192), ('icon-512', 512), ('maskable-512', 512), ('favicon-32', 32), ('app-256', 256)]:
+    png(f'{out}/{name}.png', size, name.startswith('maskable'))
 print('icons written to', out)

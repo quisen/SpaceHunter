@@ -25,8 +25,20 @@ struct Ctx<'a> {
     base_depth: u16,
 }
 
-pub fn layout_classic(tree: &Tree, root: NodeId, rect: [f32; 4], free: Option<u64>, o: &ClassicOptions) -> Vec<Cell> {
-    let mut cx = Ctx { tree, o: *o, free: free.unwrap_or(0), out: Vec::with_capacity(4096), base_depth: 0 };
+pub fn layout_classic(
+    tree: &Tree,
+    root: NodeId,
+    rect: [f32; 4],
+    free: Option<u64>,
+    o: &ClassicOptions,
+) -> Vec<Cell> {
+    let mut cx = Ctx {
+        tree,
+        o: *o,
+        free: free.unwrap_or(0),
+        out: Vec::with_capacity(4096),
+        base_depth: 0,
+    };
     let (w, h) = (rect[2] as i32 - 1, rect[3] as i32 - 1);
     if w > 0 && h > 0 {
         cx.folder(rect[0] as i32, rect[1] as i32, w, h, root, 0, root == 0);
@@ -35,19 +47,35 @@ pub fn layout_classic(tree: &Tree, root: NodeId, rect: [f32; 4], free: Option<u6
 }
 
 impl Ctx<'_> {
-    fn folder(&mut self, x: i32, y: i32, w: i32, h: i32, node: NodeId, depth: u16, with_free: bool) {
+    fn folder(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        node: NodeId,
+        depth: u16,
+        with_free: bool,
+    ) {
         let kids = self.tree.children(node);
         let mut idx: Vec<u32> = (0..kids.len() as u32).collect();
         if with_free && self.free > 0 {
             // the free-space entry sorts among the others
-            let pos = idx.iter().position(|&i| self.tree.node(kids[i as usize]).size < self.free).unwrap_or(idx.len());
+            let pos = idx
+                .iter()
+                .position(|&i| self.tree.node(kids[i as usize]).size < self.free)
+                .unwrap_or(idx.len());
             idx.insert(pos, u32::MAX);
         }
         self.split(x, y, w, h, node, &idx, depth);
     }
 
     fn size_of(&self, node: NodeId, i: u32) -> u64 {
-        if i == u32::MAX { self.free } else { self.tree.node(self.tree.children(node)[i as usize]).size }
+        if i == u32::MAX {
+            self.free
+        } else {
+            self.tree.node(self.tree.children(node)[i as usize]).size
+        }
     }
 
     fn split(&mut self, x: i32, y: i32, w: i32, h: i32, node: NodeId, idx: &[u32], depth: u16) {
@@ -93,7 +121,18 @@ impl Ctx<'_> {
             } else if ok {
                 self.item(node, g[0], r, depth);
             } else {
-                self.out.push(Cell { node, x: r.0 as f32, y: r.1 as f32, w: r.2 as f32, h: r.3 as f32, header: 0.0, depth, kind: CellKind::Lump, size: gs, count: g.len() as u32 });
+                self.out.push(Cell {
+                    node,
+                    x: r.0 as f32,
+                    y: r.1 as f32,
+                    w: r.2 as f32,
+                    h: r.3 as f32,
+                    header: 0.0,
+                    depth,
+                    kind: CellKind::Lump,
+                    size: gs,
+                    count: g.len() as u32,
+                });
             }
         }
     }
@@ -101,17 +140,50 @@ impl Ctx<'_> {
     fn item(&mut self, parent: NodeId, i: u32, r: (i32, i32, i32, i32), depth: u16) {
         let (x, y, w, h) = r;
         if i == u32::MAX {
-            self.out.push(Cell { node: NONE, x: x as f32, y: y as f32, w: w as f32, h: h as f32, header: 0.0, depth, kind: CellKind::Free, size: self.free, count: 0 });
+            self.out.push(Cell {
+                node: NONE,
+                x: x as f32,
+                y: y as f32,
+                w: w as f32,
+                h: h as f32,
+                header: 0.0,
+                depth,
+                kind: CellKind::Free,
+                size: self.free,
+                count: 0,
+            });
             return;
         }
         let id = self.tree.children(parent)[i as usize];
         let n = self.tree.node(id);
         if n.is_dir {
             let header = if h > 14 { 12.0 } else { 0.0 };
-            self.out.push(Cell { node: id, x: x as f32, y: y as f32, w: w as f32, h: h as f32, header, depth, kind: CellKind::Dir, size: n.size, count: 0 });
+            self.out.push(Cell {
+                node: id,
+                x: x as f32,
+                y: y as f32,
+                w: w as f32,
+                h: h as f32,
+                header,
+                depth,
+                kind: CellKind::Dir,
+                size: n.size,
+                count: 0,
+            });
             self.folder(x + 3, y + 12, w - 6, h - 15, id, depth + 1, false);
         } else {
-            self.out.push(Cell { node: id, x: x as f32, y: y as f32, w: w as f32, h: h as f32, header: 0.0, depth, kind: CellKind::File, size: n.size, count: 0 });
+            self.out.push(Cell {
+                node: id,
+                x: x as f32,
+                y: y as f32,
+                w: w as f32,
+                h: h as f32,
+                header: 0.0,
+                depth,
+                kind: CellKind::File,
+                size: n.size,
+                count: 0,
+            });
         }
     }
 }
@@ -131,8 +203,18 @@ mod tests {
     #[test]
     fn partitions_without_overlap() {
         let t = crate::sample::generate(3, 3000);
-        let o = ClassicOptions { min_w: 16, min_h: 12, bias: 0 };
-        let cells = layout_classic(&t, 0, [0.0, 0.0, 900.0, 600.0], Some(t.total_size() / 3), &o);
+        let o = ClassicOptions {
+            min_w: 16,
+            min_h: 12,
+            bias: 0,
+        };
+        let cells = layout_classic(
+            &t,
+            0,
+            [0.0, 0.0, 900.0, 600.0],
+            Some(t.total_size() / 3),
+            &o,
+        );
         assert!(cells.len() > 50);
         assert!(cells.iter().any(|c| c.kind == CellKind::Free));
         let leaves: Vec<_> = cells.iter().filter(|c| c.kind != CellKind::Dir).collect();
@@ -151,7 +233,17 @@ mod tests {
         let mut b = TreeBuilder::new("r");
         b.add_file(0, "a", 10, 0);
         let t = b.finish();
-        let c = layout_classic(&t, 0, [0.0, 0.0, 200.0, 100.0], None, &ClassicOptions { min_w: 16, min_h: 12, bias: 0 });
+        let c = layout_classic(
+            &t,
+            0,
+            [0.0, 0.0, 200.0, 100.0],
+            None,
+            &ClassicOptions {
+                min_w: 16,
+                min_h: 12,
+                bias: 0,
+            },
+        );
         assert_eq!(c.len(), 1);
         assert_eq!((c[0].w, c[0].h), (199.0, 99.0));
     }

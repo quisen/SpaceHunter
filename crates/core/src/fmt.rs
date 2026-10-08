@@ -10,7 +10,13 @@ pub fn size(b: u64) -> String {
         v /= 1024.0;
         i += 1;
     }
-    if v >= 100.0 { format!("{v:.0} {}", U[i]) } else if v >= 10.0 { format!("{v:.1} {}", U[i]) } else { format!("{v:.2} {}", U[i]) }
+    if v >= 100.0 {
+        format!("{v:.0} {}", U[i])
+    } else if v >= 10.0 {
+        format!("{v:.1} {}", U[i])
+    } else {
+        format!("{v:.2} {}", U[i])
+    }
 }
 
 /// `YYYY-MM-DD HH:MM` from a Unix timestamp (UTC), or empty if unknown.
@@ -31,7 +37,11 @@ pub fn date(t: u32) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}", secs / 3600, secs % 3600 / 60)
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}:{:02}",
+        secs / 3600,
+        secs % 3600 / 60
+    )
 }
 
 pub fn ext(name: &str) -> &str {

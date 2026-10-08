@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Build the PWA and publish it to Cloudflare Workers, then verify the files are really served.
-# Needs Node >= 22 for wrangler (nvm install 22) and `npx wrangler login` once.
+# Publish the web app only after the matching Windows executable is publicly available.
+# Requires Node >= 22 and an authenticated Wrangler session.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-./scripts/build-web.sh
-npx wrangler@latest deploy
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo 'Commit the reviewed app and generated dist changes before publishing.' >&2
+  exit 1
+fi
+python3 scripts/verify-release.py --commit "$(git rev-parse HEAD)"
+# dist/ is the reviewed, committed build generated before the Windows release.
+npx wrangler@4.149.0 deploy
 URL="${1:-https://spacehunter.rquisen.workers.dev}"
-for f in "" spacehunter.js spacehunter_bg.wasm sw.js; do
+for f in "" app/ app/spacehunter.js app/spacehunter_bg.wasm app/sw.js app/manifest.webmanifest; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/$f")
   echo "$code  $URL/$f"
-  [ "$code" = 200 ] || { echo "deploy verification FAILED"; exit 1; }
+  [ "$code" = 200 ] || { echo 'Deploy verification failed' >&2; exit 1; }
 done

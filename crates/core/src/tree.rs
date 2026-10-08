@@ -108,14 +108,21 @@ pub struct TreeBuilder {
 
 impl TreeBuilder {
     pub fn new(root_name: &str) -> Self {
-        let mut b = TreeBuilder { names: String::new(), nodes: Vec::new() };
+        let mut b = TreeBuilder {
+            names: String::new(),
+            nodes: Vec::new(),
+        };
         b.push(NONE, root_name, true, 0, 0);
         b
     }
 
     fn push(&mut self, parent: NodeId, name: &str, is_dir: bool, size: u64, mtime: u32) -> NodeId {
         let name_off = self.names.len() as u32;
-        let name = if name.len() > u16::MAX as usize { &name[..u16::MAX as usize] } else { name };
+        let name = if name.len() > u16::MAX as usize {
+            &name[..u16::MAX as usize]
+        } else {
+            name
+        };
         // keep UTF-8 valid when truncating
         let mut end = name.len();
         while !name.is_char_boundary(end) {
@@ -152,7 +159,13 @@ impl TreeBuilder {
     }
 
     /// Build a tree from `/`- or `\`-separated relative paths (used by the web front-end).
-    pub fn add_path(&mut self, dirs: &mut std::collections::HashMap<String, NodeId>, path: &str, size: u64, mtime: u32) {
+    pub fn add_path(
+        &mut self,
+        dirs: &mut std::collections::HashMap<String, NodeId>,
+        path: &str,
+        size: u64,
+        mtime: u32,
+    ) {
         let path = path.trim_matches(|c| c == '/' || c == '\\');
         let mut parent = 0;
         let mut acc = String::new();
@@ -221,7 +234,11 @@ impl TreeBuilder {
                     .then_with(|| name_of(a).cmp(name_of(b)))
             });
         }
-        Tree { names: self.names, nodes: self.nodes, children }
+        Tree {
+            names: self.names,
+            nodes: self.nodes,
+            children,
+        }
     }
 }
 

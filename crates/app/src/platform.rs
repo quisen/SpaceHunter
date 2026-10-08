@@ -20,7 +20,11 @@ pub struct Job {
 
 impl Job {
     pub fn new(label: impl Into<String>) -> Self {
-        Job { progress: Arc::new(Progress::default()), inbox: Arc::new(Mutex::new(None)), label: label.into() }
+        Job {
+            progress: Arc::new(Progress::default()),
+            inbox: Arc::new(Mutex::new(None)),
+            label: label.into(),
+        }
     }
 }
 
@@ -29,9 +33,18 @@ pub fn demo(ctx: &egui::Context) -> Job {
     let (inbox, progress, ctx) = (job.inbox.clone(), job.progress.clone(), ctx.clone());
     let work = move || {
         let tree = spacehunter_core::sample::generate(7, 60_000);
-        progress.files.store(tree.node(0).files as u64, std::sync::atomic::Ordering::Relaxed);
-        *inbox.lock().unwrap() = Some(Loaded { tree, path: None, disk: None });
-        progress.done.store(true, std::sync::atomic::Ordering::Relaxed);
+        progress.files.store(
+            tree.node(0).files as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        *inbox.lock().unwrap() = Some(Loaded {
+            tree,
+            path: None,
+            disk: None,
+        });
+        progress
+            .done
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         ctx.request_repaint();
     };
     #[cfg(not(target_arch = "wasm32"))]
@@ -49,8 +62,8 @@ mod native {
 
     pub const CAN_SCAN_PATHS: bool = true;
 
-    pub fn pick_folder() -> Option<PathBuf> {
-        rfd::FileDialog::new().set_title("Select a folder or drive to analyse").pick_folder()
+    pub fn pick_folder(title: &str) -> Option<PathBuf> {
+        rfd::FileDialog::new().set_title(title).pick_folder()
     }
 
     pub fn start_scan(ctx: &egui::Context, path: PathBuf, opts: ScanOptions) -> Job {
@@ -65,16 +78,26 @@ mod native {
                     c3.request_repaint();
                 }
             });
-            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| scan::scan(&path, opts, progress.clone())));
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                scan::scan(&path, opts, progress.clone())
+            }));
             match r {
                 Ok(tree) => {
                     let disk = scan::disk_space(&path);
                     if !progress.cancel.load(Relaxed) {
-                        *inbox.lock().unwrap() = Some(Loaded { tree, path: Some(path), disk });
+                        *inbox.lock().unwrap() = Some(Loaded {
+                            tree,
+                            path: Some(path),
+                            disk,
+                        });
                     }
                 }
                 Err(e) => {
-                    let msg = e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "scanner panicked".into());
+                    let msg = e
+                        .downcast_ref::<String>()
+                        .cloned()
+                        .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "scanner panicked".into());
                     *progress.error.lock().unwrap() = Some(format!("scan failed: {msg}"));
                 }
             }
@@ -117,16 +140,32 @@ mod native {
             use std::os::windows::process::CommandExt;
             let mut c = std::process::Command::new("explorer");
             c.creation_flags(0x0800_0000);
-            if is_dir { c.arg(path); } else { c.arg(format!("/select,{}", path.display())); }
+            if is_dir {
+                c.arg(path);
+            } else {
+                c.arg(format!("/select,{}", path.display()));
+            }
             let _ = c.spawn();
         }
         #[cfg(target_os = "macos")]
         {
-            let _ = std::process::Command::new("open").arg(if is_dir { path.to_path_buf() } else { path.parent().unwrap_or(path).to_path_buf() }).spawn();
+            let _ = std::process::Command::new("open")
+                .arg(if is_dir {
+                    path.to_path_buf()
+                } else {
+                    path.parent().unwrap_or(path).to_path_buf()
+                })
+                .spawn();
         }
         #[cfg(all(unix, not(target_os = "macos")))]
         {
-            let _ = std::process::Command::new("xdg-open").arg(if is_dir { path.to_path_buf() } else { path.parent().unwrap_or(path).to_path_buf() }).spawn();
+            let _ = std::process::Command::new("xdg-open")
+                .arg(if is_dir {
+                    path.to_path_buf()
+                } else {
+                    path.parent().unwrap_or(path).to_path_buf()
+                })
+                .spawn();
         }
     }
 
@@ -135,7 +174,11 @@ mod native {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            let _ = std::process::Command::new("cmd").args(["/C", "start", ""]).arg(path).creation_flags(0x0800_0000).spawn();
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", ""])
+                .arg(path)
+                .creation_flags(0x0800_0000)
+                .spawn();
         }
         #[cfg(target_os = "macos")]
         {
@@ -148,12 +191,19 @@ mod native {
     }
 
     pub fn delete(path: &std::path::Path, is_dir: bool) -> Result<(), String> {
-        let r = if is_dir { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
+        let r = if is_dir {
+            std::fs::remove_dir_all(path)
+        } else {
+            std::fs::remove_file(path)
+        };
         r.map_err(|e| e.to_string())
     }
 
     pub fn default_opts(size_on_disk: bool) -> ScanOptions {
-        ScanOptions { size_on_disk, one_filesystem: true }
+        ScanOptions {
+            size_on_disk,
+            one_filesystem: true,
+        }
     }
 }
 #[cfg(not(target_arch = "wasm32"))]

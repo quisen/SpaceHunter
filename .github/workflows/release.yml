@@ -4,33 +4,67 @@ on:
   pull_request:
   workflow_dispatch:
 permissions: { contents: read }
+# Serialize releases so an older build cannot replace a newer public download.
+concurrency:
+  group: spacehunter-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - run: cargo fmt --all --check
       - run: cargo test -p spacehunter-core
   windows:
+    needs: test
     runs-on: windows-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release -p spacehunter --bin spacehunter
-      - run: Copy-Item target/release/spacehunter.exe SpaceHunter.exe
+      - run: cargo build --locked --release -p spacehunter --bin spacehunter
+      - name: Prepare versioned Windows artifacts
         shell: pwsh
+        run: |
+          Copy-Item target/release/spacehunter.exe SpaceHunter.exe
+          $digest = (Get-FileHash SpaceHunter.exe -Algorithm SHA256).Hash.ToLower()
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = ($metadata.packages | Where-Object { $_.name -eq 'spacehunter' }).version
+          "$digest  SpaceHunter.exe" | Set-Content -Encoding utf8NoBOM SpaceHunter.exe.sha256
+          @{
+            commit = $env:GITHUB_SHA
+            version = $version
+            target = 'x86_64-pc-windows-msvc'
+            exe_sha256 = $digest
+          } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM build-info.json
       - uses: actions/upload-artifact@v4
-        with: { name: SpaceHunter-windows, path: SpaceHunter.exe }
-      # Rolling "latest" release: the landing page links to
-      # https://github.com/quisen/SpaceHunter/releases/latest/download/SpaceHunter.exe
-      - name: Publish latest .exe
+        with:
+          name: SpaceHunter-windows
+          path: |
+            SpaceHunter.exe
+            SpaceHunter.exe.sha256
+            build-info.json
+      # /releases/latest/download/SpaceHunter.exe resolves to the latest complete build.
+      # Immutable tags preserve previous builds and avoid deleting the current download.
+      - name: Publish Windows release
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          gh release delete latest --cleanup-tag --yes || true
-          gh release create latest SpaceHunter.exe --target "$GITHUB_SHA" \
-            --title "SpaceHunter (latest build)" \
-            --notes "Automatic build of commit ${GITHUB_SHA::7}. Windows x64, portable – just run it."
+          TAG="build-$GITHUB_SHA"
+          VERSION=$(python -c 'import json; print(json.load(open("build-info.json"))["version"])')
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" SpaceHunter.exe SpaceHunter.exe.sha256 build-info.json --clobber
+            gh release edit "$TAG" --latest
+          else
+            gh release create "$TAG" SpaceHunter.exe SpaceHunter.exe.sha256 build-info.json \
+              --target "$GITHUB_SHA" --latest --title "Space Hunter $VERSION (${GITHUB_SHA::7})" \
+              --notes "Windows x64 portable. Version $VERSION. Source commit: $GITHUB_SHA. Includes the current visual identity, 2D overview and PT-BR/EN-US interface. See build-info.json and SHA-256 for build verification."
+          fi
+      - name: Verify the public download
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        run: python scripts/verify-release.py --commit "$GITHUB_SHA"

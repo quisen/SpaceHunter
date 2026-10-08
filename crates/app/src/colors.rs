@@ -16,7 +16,13 @@ pub enum Scheme {
 }
 
 impl Scheme {
-    pub const ALL: [Scheme; 5] = [Scheme::Type, Scheme::Rainbow, Scheme::Depth, Scheme::Size, Scheme::Mono];
+    pub const ALL: [Scheme; 5] = [
+        Scheme::Type,
+        Scheme::Rainbow,
+        Scheme::Depth,
+        Scheme::Size,
+        Scheme::Mono,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             Scheme::Type => "By file type",
@@ -53,7 +59,11 @@ fn hash(s: &str) -> u32 {
 }
 
 pub fn to32(c: [f32; 3]) -> Color32 {
-    Color32::from_rgb((c[0].clamp(0.0, 1.0) * 255.0) as u8, (c[1].clamp(0.0, 1.0) * 255.0) as u8, (c[2].clamp(0.0, 1.0) * 255.0) as u8)
+    Color32::from_rgb(
+        (c[0].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[1].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[2].clamp(0.0, 1.0) * 255.0) as u8,
+    )
 }
 
 pub struct ColorCtx {
@@ -78,7 +88,13 @@ const CLASSIC: [[[u8; 3]; 3]; 8] = [
 impl ColorCtx {
     fn classic(&self, depth: u16) -> [[f32; 3]; 3] {
         let e = &CLASSIC[((self.depth_base + depth) & 7) as usize];
-        let f = |c: [u8; 3]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0];
+        let f = |c: [u8; 3]| {
+            [
+                c[0] as f32 / 255.0,
+                c[1] as f32 / 255.0,
+                c[2] as f32 / 255.0,
+            ]
+        };
         let k = if self.dark { 0.82 } else { 1.0 };
         let dim = |c: [f32; 3]| [c[0] * k, c[1] * k, c[2] * k];
         [dim(f(e[0])), dim(f(e[1])), dim(f(e[2]))]
@@ -98,8 +114,20 @@ impl ColorCtx {
     pub fn leaf(&self, tree: &Tree, c: &Cell) -> [f32; 3] {
         let l = if self.dark { 0.52 } else { 0.62 };
         match c.kind {
-            CellKind::Free => return if self.dark { [0.10, 0.22, 0.14] } else { [0.78, 0.92, 0.80] },
-            CellKind::Lump => return if self.dark { [0.30, 0.31, 0.34] } else { [0.72, 0.73, 0.76] },
+            CellKind::Free => {
+                return if self.dark {
+                    [0.10, 0.22, 0.14]
+                } else {
+                    [0.78, 0.92, 0.80]
+                }
+            }
+            CellKind::Lump => {
+                return if self.dark {
+                    [0.30, 0.31, 0.34]
+                } else {
+                    [0.72, 0.73, 0.76]
+                }
+            }
             _ => {}
         }
         let name = tree.name(c.node);
@@ -111,19 +139,35 @@ impl ColorCtx {
                 }
                 let e = fmt::ext(name);
                 let hh = hash(e);
-                let hue = if e.is_empty() { 40.0 } else { (hh % 360) as f32 };
+                let hue = if e.is_empty() {
+                    40.0
+                } else {
+                    (hh % 360) as f32
+                };
                 let s = if e.is_empty() { 0.1 } else { 0.62 };
                 hsl(hue, s, l + ((hash(name) & 7) as f32 - 3.5) * 0.012)
             }
             Scheme::Rainbow => self.classic(c.depth)[0],
-            Scheme::Depth => hsl(c.depth as f32 * 47.0 + 200.0, 0.55, l + if is_dir { -0.12 } else { 0.0 }),
+            Scheme::Depth => hsl(
+                c.depth as f32 * 47.0 + 200.0,
+                0.55,
+                l + if is_dir { -0.12 } else { 0.0 },
+            ),
             Scheme::Size => {
-                let t = if self.max_size > 1 { ((c.size.max(1) as f32).ln() / (self.max_size as f32).ln()).clamp(0.0, 1.0) } else { 0.0 };
+                let t = if self.max_size > 1 {
+                    ((c.size.max(1) as f32).ln() / (self.max_size as f32).ln()).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
                 hsl(240.0 - t * 240.0, 0.75, l - 0.06)
             }
             Scheme::Mono => {
                 let v = 0.45 + ((hash(name) & 15) as f32) * 0.006;
-                if self.dark { [v * 0.7, v * 0.9, v * 1.15] } else { [v + 0.25, v + 0.3, v + 0.38] }
+                if self.dark {
+                    [v * 0.7, v * 0.9, v * 1.15]
+                } else {
+                    [v + 0.25, v + 0.3, v + 0.38]
+                }
             }
         }
     }
@@ -131,7 +175,11 @@ impl ColorCtx {
     /// Frame colour of a folder (nesting is visible through slightly shifting lightness).
     pub fn frame(&self, depth: u16) -> [f32; 3] {
         let k = (depth % 6) as f32 * 0.018;
-        if self.dark { hsl(222.0, 0.16, 0.10 + k) } else { hsl(222.0, 0.12, 0.90 - k) }
+        if self.dark {
+            hsl(222.0, 0.16, 0.10 + k)
+        } else {
+            hsl(222.0, 0.12, 0.90 - k)
+        }
     }
     pub fn header(&self, depth: u16) -> [f32; 3] {
         if self.scheme == Scheme::Rainbow {
@@ -139,7 +187,11 @@ impl ColorCtx {
             return [c[0] * 0.6, c[1] * 0.6, c[2] * 0.6];
         }
         let k = (depth % 6) as f32 * 0.018;
-        if self.dark { hsl(222.0, 0.22, 0.20 + k) } else { hsl(222.0, 0.18, 0.80 - k) }
+        if self.dark {
+            hsl(222.0, 0.22, 0.20 + k)
+        } else {
+            hsl(222.0, 0.18, 0.80 - k)
+        }
     }
 }
 

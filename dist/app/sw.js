@@ -1,7 +1,7 @@
-// SpaceHunter service worker: offline-first app shell. 8af122bb39 is replaced by scripts/build-web.sh.
-const CACHE = 'spacehunter-8af122bb39';
+// SpaceHunter service worker: offline-first app shell. f451974744 is replaced by scripts/build-web.sh.
+const CACHE = 'spacehunter-f451974744';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './spacehunter.js', './spacehunter_bg.wasm',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/favicon-32.png'];
+  './icons/logo.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

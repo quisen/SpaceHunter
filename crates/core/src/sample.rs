@@ -18,8 +18,21 @@ impl Rng {
 pub fn generate(seed: u64, target_nodes: usize) -> Tree {
     let mut r = Rng(seed.max(1) | 1);
     let mut b = TreeBuilder::new("Demo (C:)");
-    let exts = ["dll", "exe", "mp4", "jpg", "png", "txt", "zip", "pdf", "mp3", "log", "cs", "rs", "js", "json", "iso", "bin"];
-    let tops = ["Windows", "Program Files", "Users", "Games", "Projects", "Videos", "Downloads", "Temp", "Backups"];
+    let exts = [
+        "dll", "exe", "mp4", "jpg", "png", "txt", "zip", "pdf", "mp3", "log", "cs", "rs", "js",
+        "json", "iso", "bin",
+    ];
+    let tops = [
+        "Windows",
+        "Program Files",
+        "Users",
+        "Games",
+        "Projects",
+        "Videos",
+        "Downloads",
+        "Temp",
+        "Backups",
+    ];
     let mut dirs = vec![0u32];
     for t in tops {
         dirs.push(b.add_dir(0, t));
@@ -32,8 +45,14 @@ pub fn generate(seed: u64, target_nodes: usize) -> Tree {
         } else {
             let e = exts[(r.next() as usize) % exts.len()];
             // log-normal-ish sizes: many small, a few huge
-            let size = (2f64.powf(8.0 + r.f() * 20.0 + if r.f() < 0.02 { 8.0 } else { 0.0 })) as u64;
-            b.add_file(parent, &format!("file_{}.{e}", r.next() % 1000000), size, 1_600_000_000 + (r.next() % 100_000_000) as u32);
+            let size =
+                (2f64.powf(8.0 + r.f() * 20.0 + if r.f() < 0.02 { 8.0 } else { 0.0 })) as u64;
+            b.add_file(
+                parent,
+                &format!("file_{}.{e}", r.next() % 1000000),
+                size,
+                1_600_000_000 + (r.next() % 100_000_000) as u32,
+            );
         }
     }
     b.finish()

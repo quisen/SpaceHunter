@@ -17,7 +17,10 @@ pub struct ScanOptions {
 
 impl Default for ScanOptions {
     fn default() -> Self {
-        Self { size_on_disk: true, one_filesystem: true }
+        Self {
+            size_on_disk: true,
+            one_filesystem: true,
+        }
     }
 }
 
@@ -38,7 +41,7 @@ pub fn scan(root: &Path, opts: ScanOptions, progress: Arc<Progress>) -> Tree {
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.to_string_lossy().into_owned());
-    
+
     let shared = Shared {
         builder: Mutex::new(TreeBuilder::new(&name)),
         #[cfg(unix)]
@@ -63,7 +66,9 @@ fn walk<'s>(scope: &rayon::Scope<'s>, sh: &'s Shared, dir: PathBuf, id: NodeId) 
     if sh.progress.cancel.load(Relaxed) {
         return;
     }
-    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return;
+    };
     // Collect first, so the builder lock is held only briefly.
     let mut files: Vec<(String, u64, u32)> = Vec::new();
     let mut subdirs: Vec<(String, PathBuf)> = Vec::new();
@@ -91,7 +96,9 @@ fn walk<'s>(scope: &rayon::Scope<'s>, sh: &'s Shared, dir: PathBuf, id: NodeId) 
             }
             subdirs.push((name, e.path()));
         } else if ft.is_file() {
-            let Some(size) = file_size(sh, &md) else { continue };
+            let Some(size) = file_size(sh, &md) else {
+                continue;
+            };
             let mtime = md
                 .modified()
                 .ok()
@@ -122,13 +129,21 @@ fn file_size(sh: &Shared, md: &std::fs::Metadata) -> Option<u64> {
     if md.nlink() > 1 && !sh.seen.lock().unwrap().insert((md.dev(), md.ino())) {
         return None; // hard link already counted
     }
-    Some(if sh.opts.size_on_disk { md.blocks() * 512 } else { md.len() })
+    Some(if sh.opts.size_on_disk {
+        md.blocks() * 512
+    } else {
+        md.len()
+    })
 }
 
 #[cfg(windows)]
 fn file_size(sh: &Shared, md: &std::fs::Metadata) -> Option<u64> {
     let len = md.len();
-    Some(if sh.opts.size_on_disk && sh.cluster > 1 { len.div_ceil(sh.cluster) * sh.cluster } else { len })
+    Some(if sh.opts.size_on_disk && sh.cluster > 1 {
+        len.div_ceil(sh.cluster) * sh.cluster
+    } else {
+        len
+    })
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -145,7 +160,11 @@ fn cluster_size(root: &Path) -> u64 {
     let (mut spc, mut bps, mut a, mut b) = (0u32, 0u32, 0u32, 0u32);
     // SAFETY: valid NUL-terminated buffer and out pointers.
     let ok = unsafe { GetDiskFreeSpaceW(s.as_ptr(), &mut spc, &mut bps, &mut a, &mut b) };
-    if ok != 0 { (spc as u64) * (bps as u64) } else { 4096 }
+    if ok != 0 {
+        (spc as u64) * (bps as u64)
+    } else {
+        4096
+    }
 }
 
 /// Total / free bytes of the volume holding `path`, if known.

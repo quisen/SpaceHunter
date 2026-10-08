@@ -61,7 +61,12 @@ fn walk(cx: Rc<Ctx>, handle: JsValue, parent: u32) -> Promise {
             }
         }
         let swallow = Closure::<dyn FnMut(JsValue)>::new(|_| {});
-        let files = Promise::all(&file_promises.iter().map(|(_, p)| p.catch(&swallow)).collect::<Array>());
+        let files = Promise::all(
+            &file_promises
+                .iter()
+                .map(|(_, p)| p.catch(&swallow))
+                .collect::<Array>(),
+        );
         swallow.forget();
         let arr: Array = JsFuture::from(files).await?.into();
         let mut bytes = 0u64;
@@ -78,7 +83,9 @@ fn walk(cx: Rc<Ctx>, handle: JsValue, parent: u32) -> Promise {
                 bytes += size;
             }
         }
-        cx.progress.files.fetch_add(file_promises.len() as u64, Relaxed);
+        cx.progress
+            .files
+            .fetch_add(file_promises.len() as u64, Relaxed);
         cx.progress.bytes.fetch_add(bytes, Relaxed);
         cx.egui.request_repaint();
         let _ = JsFuture::from(Promise::all(&sub.into_iter().collect::<Array>())).await?;
@@ -89,7 +96,11 @@ fn walk(cx: Rc<Ctx>, handle: JsValue, parent: u32) -> Promise {
 fn finish(cx: Rc<Ctx>, inbox: Arc<std::sync::Mutex<Option<Loaded>>>) {
     // All clones are dropped once the walk promises resolve; take the builder out.
     let b = std::mem::replace(&mut *cx.b.borrow_mut(), TreeBuilder::new(""));
-    *inbox.lock().unwrap() = Some(Loaded { tree: b.finish(), path: None, disk: None });
+    *inbox.lock().unwrap() = Some(Loaded {
+        tree: b.finish(),
+        path: None,
+        disk: None,
+    });
     cx.progress.done.store(true, Relaxed);
     cx.egui.request_repaint();
 }
@@ -101,8 +112,14 @@ fn fail(job: &Arc<Progress>, msg: &str, ctx: &egui::Context) {
 }
 
 fn start_handle(ctx: &egui::Context, handle: JsValue, job: &Job) {
-    let name = get(&handle, "name").as_string().unwrap_or_else(|| "folder".into());
-    let cx = Rc::new(Ctx { b: RefCell::new(TreeBuilder::new(&name)), progress: job.progress.clone(), egui: ctx.clone() });
+    let name = get(&handle, "name")
+        .as_string()
+        .unwrap_or_else(|| "folder".into());
+    let cx = Rc::new(Ctx {
+        b: RefCell::new(TreeBuilder::new(&name)),
+        progress: job.progress.clone(),
+        egui: ctx.clone(),
+    });
     let (inbox, prog, ctx) = (job.inbox.clone(), job.progress.clone(), ctx.clone());
     spawn_local(async move {
         match JsFuture::from(walk(cx.clone(), handle, 0)).await {
@@ -117,10 +134,20 @@ pub fn start_open(ctx: &egui::Context) -> Option<Job> {
     let job = Job::new("folder");
     let win = web_sys::window()?;
     if Reflect::has(&win, &JsValue::from_str("showDirectoryPicker")).unwrap_or(false) {
-        let (ctx2, j2) = (ctx.clone(), Job { progress: job.progress.clone(), inbox: job.inbox.clone(), label: String::new() });
+        let (ctx2, j2) = (
+            ctx.clone(),
+            Job {
+                progress: job.progress.clone(),
+                inbox: job.inbox.clone(),
+                label: String::new(),
+            },
+        );
         spawn_local(async move {
-            let f: Function = get(&web_sys::window().unwrap(), "showDirectoryPicker").unchecked_into();
-            let p = f.call0(&web_sys::window().unwrap()).and_then(|p| p.dyn_into::<Promise>());
+            let f: Function =
+                get(&web_sys::window().unwrap(), "showDirectoryPicker").unchecked_into();
+            let p = f
+                .call0(&web_sys::window().unwrap())
+                .and_then(|p| p.dyn_into::<Promise>());
             match p {
                 Ok(p) => match JsFuture::from(p).await {
                     Ok(h) => start_handle(&ctx2, h, &j2),
@@ -145,25 +172,35 @@ fn input_fallback(ctx: &egui::Context, job: &Job) {
     let (inbox, prog, ctx) = (job.inbox.clone(), job.progress.clone(), ctx.clone());
     let inp2 = input.clone();
     let cb = Closure::once_into_js(move || {
-        let Some(files) = inp2.files() else { return fail(&prog, "no files", &ctx) };
+        let Some(files) = inp2.files() else {
+            return fail(&prog, "no files", &ctx);
+        };
         if files.length() == 0 {
             return fail(&prog, "cancelled", &ctx);
         }
         let first = files.get(0).unwrap();
-        let rel = get(&first, "webkitRelativePath").as_string().unwrap_or_default();
+        let rel = get(&first, "webkitRelativePath")
+            .as_string()
+            .unwrap_or_default();
         let root = rel.split('/').next().unwrap_or("folder").to_owned();
         let mut b = TreeBuilder::new(&root);
         let mut dirs: HashMap<String, u32> = HashMap::new();
         for i in 0..files.length() {
             let f = files.get(i).unwrap();
-            let rel = get(&f, "webkitRelativePath").as_string().unwrap_or_default();
+            let rel = get(&f, "webkitRelativePath")
+                .as_string()
+                .unwrap_or_default();
             let rest = rel.split_once('/').map_or(rel.as_str(), |x| x.1);
             let size = f.size() as u64;
             b.add_path(&mut dirs, rest, size, (f.last_modified() / 1000.0) as u32);
             prog.bytes.fetch_add(size, Relaxed);
         }
         prog.files.store(files.length() as u64, Relaxed);
-        *inbox.lock().unwrap() = Some(Loaded { tree: b.finish(), path: None, disk: None });
+        *inbox.lock().unwrap() = Some(Loaded {
+            tree: b.finish(),
+            path: None,
+            disk: None,
+        });
         prog.done.store(true, Relaxed);
         ctx.request_repaint();
     });
@@ -174,25 +211,41 @@ fn input_fallback(ctx: &egui::Context, job: &Job) {
 /// Accept a folder dropped onto the page (Chromium: `getAsFileSystemHandle`).
 pub fn install_drop(ctx: &egui::Context, slot: Rc<RefCell<Option<Job>>>) {
     let win = web_sys::window().unwrap();
-    let over = Closure::<dyn FnMut(web_sys::DragEvent)>::new(|e: web_sys::DragEvent| e.prevent_default());
+    let over =
+        Closure::<dyn FnMut(web_sys::DragEvent)>::new(|e: web_sys::DragEvent| e.prevent_default());
     let _ = win.add_event_listener_with_callback("dragover", over.as_ref().unchecked_ref());
     over.forget();
     let ctx = ctx.clone();
     let drop = Closure::<dyn FnMut(web_sys::DragEvent)>::new(move |e: web_sys::DragEvent| {
         e.prevent_default();
-        let Some(items) = e.data_transfer().map(|d| d.items()) else { return };
+        let Some(items) = e.data_transfer().map(|d| d.items()) else {
+            return;
+        };
         if items.length() == 0 {
             return;
         }
         let item: JsValue = items.get(0).unwrap().into();
-        let Ok(f) = get(&item, "getAsFileSystemHandle").dyn_into::<Function>() else { return };
-        let Ok(p) = f.call0(&item).and_then(|p| p.dyn_into::<Promise>()) else { return };
+        let Ok(f) = get(&item, "getAsFileSystemHandle").dyn_into::<Function>() else {
+            return;
+        };
+        let Ok(p) = f.call0(&item).and_then(|p| p.dyn_into::<Promise>()) else {
+            return;
+        };
         let job = Job::new("dropped folder");
-        let (ctx2, j2) = (ctx.clone(), Job { progress: job.progress.clone(), inbox: job.inbox.clone(), label: String::new() });
+        let (ctx2, j2) = (
+            ctx.clone(),
+            Job {
+                progress: job.progress.clone(),
+                inbox: job.inbox.clone(),
+                label: String::new(),
+            },
+        );
         *slot.borrow_mut() = Some(job);
         spawn_local(async move {
             match JsFuture::from(p).await {
-                Ok(h) if get(&h, "kind").as_string().as_deref() == Some("directory") => start_handle(&ctx2, h, &j2),
+                Ok(h) if get(&h, "kind").as_string().as_deref() == Some("directory") => {
+                    start_handle(&ctx2, h, &j2)
+                }
                 _ => fail(&j2.progress, "please drop a folder", &ctx2),
             }
         });

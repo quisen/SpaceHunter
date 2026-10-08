@@ -22,4 +22,4 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "FileList", "File", "Blob", "DragEvent", "DataTransfer", "DataTransferItem", "DataTransferItemList", "FileSystemDirectoryHandle", "FileSystemFileHandle", "FileSystemHandle", "FileSystemHandleKind", "console", "Navigator", "ServiceWorkerContainer", "HtmlCanvasElement"] }
+web-sys = { version = "0.3", features = ["Window", "Storage", "Document", "Element", "HtmlElement", "HtmlInputElement", "FileList", "File", "Blob", "DragEvent", "DataTransfer", "DataTransferItem", "DataTransferItemList", "FileSystemDirectoryHandle", "FileSystemFileHandle", "FileSystemHandle", "FileSystemHandleKind", "console", "Navigator", "ServiceWorkerContainer", "HtmlCanvasElement"] }
