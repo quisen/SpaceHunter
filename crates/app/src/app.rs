@@ -124,6 +124,8 @@ pub struct SpaceHunter {
     ctx_target: Option<NodeId>,
     toast: Option<(String, Instant)>,
     top_files: Vec<NodeId>,
+    max_cache: std::cell::Cell<(u64, NodeId, u64)>,
+    dirs_cache: std::cell::Cell<(u64, NodeId, u64)>,
     top_key: (u64, NodeId),
     frames_since_load: u32,
     shot_requested: bool,
@@ -170,6 +172,8 @@ impl SpaceHunter {
             ctx_target: None,
             toast: None,
             top_files: Vec::new(),
+            max_cache: std::cell::Cell::new((u64::MAX, NONE, 0)),
+            dirs_cache: std::cell::Cell::new((u64::MAX, NONE, 0)),
             top_key: (u64::MAX, NONE),
             frames_since_load: 0,
             shot_requested: false,
@@ -242,6 +246,8 @@ impl SpaceHunter {
         if let Some(Loaded { tree, path, disk }) = loaded {
             let had = self.tree.is_some();
             self.tree_id += 1;
+            let (n, sz) = (tree.len(), tree.total_size());
+            self.toast = Some((if sz == 0 { format!("Scan finished but found no readable files ({n} items) – check permissions") } else { format!("Loaded {} items, {}", group(n as u64), fmt::size(sz)) }, Instant::now()));
             self.tree = Some(Arc::new(tree));
             self.disk = disk;
             if path.is_some() || !had || self.root_path.is_some() {
@@ -334,7 +340,16 @@ impl SpaceHunter {
     }
 
     fn color_ctx(&self, t: &Tree) -> ColorCtx {
-        ColorCtx { depth_base: t.depth(self.view_root) as u16, scheme: self.s.scheme, dark: self.s.dark, max_size: max_file_size(t, self.view_root) }
+        // O(tree) scan: cache per (tree, view root) instead of running it every frame.
+        let (tid, root, v) = self.max_cache.get();
+        let max_size = if tid == self.tree_id && root == self.view_root {
+            v
+        } else {
+            let v = max_file_size(t, self.view_root);
+            self.max_cache.set((self.tree_id, self.view_root, v));
+            v
+        };
+        ColorCtx { depth_base: t.depth(self.view_root) as u16, scheme: self.s.scheme, dark: self.s.dark, max_size }
     }
 
     fn ensure_layout(&mut self, t: &Tree, canvas: Rect) {
@@ -569,7 +584,9 @@ impl SpaceHunter {
                         ui.label(group(node.files as u64));
                         ui.end_row();
                         ui.label("Folders");
-                        ui.label(group(t.dir_count(n)));
+                        let (tid, cn, v) = self.dirs_cache.get();
+                        let dirs = if tid == self.tree_id && cn == n { v } else { let v = t.dir_count(n); self.dirs_cache.set((self.tree_id, n, v)); v };
+                        ui.label(group(dirs));
                         ui.end_row();
                     }
                     let d = fmt::date(node.mtime);

@@ -65,10 +65,18 @@ mod native {
                     c3.request_repaint();
                 }
             });
-            let tree = scan::scan(&path, opts, progress.clone());
-            let disk = scan::disk_space(&path);
-            if !progress.cancel.load(Relaxed) {
-                *inbox.lock().unwrap() = Some(Loaded { tree, path: Some(path), disk });
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| scan::scan(&path, opts, progress.clone())));
+            match r {
+                Ok(tree) => {
+                    let disk = scan::disk_space(&path);
+                    if !progress.cancel.load(Relaxed) {
+                        *inbox.lock().unwrap() = Some(Loaded { tree, path: Some(path), disk });
+                    }
+                }
+                Err(e) => {
+                    let msg = e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "scanner panicked".into());
+                    *progress.error.lock().unwrap() = Some(format!("scan failed: {msg}"));
+                }
             }
             progress.done.store(true, Relaxed);
             ctx2.request_repaint();

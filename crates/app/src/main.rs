@@ -3,6 +3,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use spacehunter::{Args, SpaceHunter};
+    // Never fail silently (release builds have no console on Windows): log + dialog.
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("SpaceHunter crashed:\n{info}\n{}", std::backtrace::Backtrace::force_capture());
+        let _ = std::fs::write(std::env::temp_dir().join("spacehunter-crash.log"), &msg);
+        rfd::MessageDialog::new().set_level(rfd::MessageLevel::Error).set_title("SpaceHunter crashed").set_description(format!("{}\n\nDetails: {}", info, std::env::temp_dir().join("spacehunter-crash.log").display())).show();
+    }));
     let mut args = Args::default();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
