@@ -15,7 +15,7 @@ mod entry {
 
     /// Called from index.html with the id of the <canvas>.
     #[wasm_bindgen]
-    pub async fn start(canvas_id: String, demo: bool) -> Result<(), JsValue> {
+    pub async fn start(canvas_id: String, demo: bool, mode3d: bool) -> Result<(), JsValue> {
         let window = web_sys::window().ok_or("no window")?;
         let canvas: web_sys::HtmlCanvasElement = window
             .document()
@@ -25,7 +25,7 @@ mod entry {
         let mut opts = eframe::WebOptions::default();
         opts.depth_buffer = 24;
         eframe::WebRunner::new()
-            .start(canvas, opts, Box::new(move |cc| Ok(Box::new(SpaceHunter::new(cc, Args { demo, ..Default::default() })))))
+            .start(canvas, opts, Box::new(move |cc| Ok(Box::new(SpaceHunter::new(cc, Args { demo, mode3d, ..Default::default() })))))
             .await
     }
 }

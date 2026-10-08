@@ -1001,7 +1001,7 @@ impl SpaceHunter {
         }
     }
 
-    fn draw_3d(&mut self, painter: &egui::Painter, rect: Rect, _t: &Tree) {
+    fn draw_3d(&mut self, painter: &egui::Painter, rect: Rect, t: &Tree) {
         let Some(b) = self.boxes.as_ref() else { return };
         let inst_of = |cell: Option<usize>| cell.and_then(|c| b.cell_of.iter().position(|&x| x as usize == c)).map_or(-1, |i| i as i32);
         let hover = inst_of(self.hover);
@@ -1016,7 +1016,70 @@ impl SpaceHunter {
             sh.clear = c;
         }
         render3d::paint(painter, rect, self.shared3d.clone());
+        if self.s.labels {
+            self.labels_3d(painter, rect, t);
+        }
         painter.text(rect.left_bottom() + egui::vec2(10.0, -8.0), Align2::LEFT_BOTTOM, "drag: orbit · right-drag: pan · wheel: zoom · double-click: enter folder", FontId::proportional(11.0), Color32::from_white_alpha(120));
+    }
+
+    /// Project the top face of each box to the screen and draw names where they fit (largest first, no overlaps).
+    fn labels_3d(&self, painter: &egui::Painter, rect: Rect, t: &Tree) {
+        let Some(b) = self.boxes.as_ref() else { return };
+        let m = self.cam.view_proj(rect.width() / rect.height());
+        let proj = |x: f32, y: f32, z: f32| -> Option<Pos2> {
+            let w = m[3] * x + m[7] * y + m[11] * z + m[15];
+            if w <= 1e-4 {
+                return None;
+            }
+            let nx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
+            let ny = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
+            Some(Pos2::new(rect.min.x + (nx * 0.5 + 0.5) * rect.width(), rect.min.y + (0.5 - ny * 0.5) * rect.height()))
+        };
+        // (priority, position, width available, text)
+        let mut cand: Vec<(f32, Pos2, f32, String, bool)> = Vec::new();
+        for (i, d) in b.data.chunks_exact(9).enumerate() {
+            let c = self.cells[b.cell_of[i] as usize];
+            let (x, z, w, dd, top) = (d[0], d[1], d[2], d[3], d[4] + d[5]);
+            let (Some(a), Some(bb), Some(cc), Some(dd2)) = (proj(x, top, z), proj(x + w, top, z), proj(x + w, top, z + dd), proj(x, top, z + dd)) else { continue };
+            let min = Pos2::new(a.x.min(bb.x).min(cc.x).min(dd2.x), a.y.min(bb.y).min(cc.y).min(dd2.y));
+            let max = Pos2::new(a.x.max(bb.x).max(cc.x).max(dd2.x), a.y.max(bb.y).max(cc.y).max(dd2.y));
+            let (sw, sh) = (max.x - min.x, max.y - min.y);
+            if sw < 46.0 || sh < 13.0 || !rect.intersects(Rect::from_min_max(min, max)) {
+                continue;
+            }
+            let text = match c.kind {
+                CellKind::Free => "Free space".to_owned(),
+                CellKind::Lump => format!("{} small items", c.count),
+                _ => t.name(c.node).to_owned(),
+            };
+            let prio = sw * sh * if c.kind == CellKind::Dir { 4.0 } else { 1.0 };
+            // folders: label the near-left corner of the slab; leaves: centred on the top face
+            let pos = if c.kind == CellKind::Dir { Pos2::new(min.x + 4.0, min.y + 2.0) } else { Pos2::new(min.x + sw / 2.0, min.y + sh / 2.0) };
+            cand.push((prio, pos, sw - 6.0, text, c.kind == CellKind::Dir));
+        }
+        cand.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let font = FontId::proportional(11.0);
+        let mut placed: Vec<Rect> = Vec::new();
+        for (_, pos, avail, text, left) in cand.into_iter().take(1500) {
+            if placed.len() >= 70 {
+                break;
+            }
+            let max_chars = (avail / 6.0) as usize;
+            if max_chars < 4 {
+                continue;
+            }
+            let shown = if text.chars().count() > max_chars { text.chars().take(max_chars - 1).collect::<String>() + "…" } else { text };
+            let w = shown.chars().count() as f32 * 6.0;
+            let x0 = if left { pos.x } else { pos.x - w / 2.0 };
+            let r = Rect::from_min_size(Pos2::new(x0, pos.y - 7.0 + if left { 7.0 } else { 0.0 }), egui::vec2(w, 14.0));
+            let r = if r.min.x < rect.min.x || r.max.x > rect.max.x { continue } else { r };
+            if placed.iter().any(|p| p.intersects(r.expand(2.0))) {
+                continue;
+            }
+            painter.text(r.center() + egui::vec2(1.0, 1.0), Align2::CENTER_CENTER, &shown, font.clone(), Color32::from_black_alpha(190));
+            painter.text(r.center(), Align2::CENTER_CENTER, &shown, font.clone(), Color32::from_rgb(240, 243, 250));
+            placed.push(r);
+        }
     }
 
     fn empty_state(&mut self, ui: &mut egui::Ui, rect: Rect) {

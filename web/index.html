@@ -33,8 +33,8 @@
       if (!probe.getContext('webgl2')) throw new Error('WebGL 2 is required but not available in this browser.');
       const { default: init, start } = await import('./spacehunter.js');
       await init();
-      const demo = new URLSearchParams(location.search).has('demo');
-      await start('sh_canvas', demo);
+      const q = new URLSearchParams(location.search);
+      await start('sh_canvas', q.has('demo'), q.has('3d'));
       splash.remove();
     } catch (e) {
       console.error(e);
