@@ -32,3 +32,10 @@ pending release explicit; these rules do not grant new publication permission.
 The related portfolio lives at `/mnt/c/Users/rquis/Documents/quisen.com.br` (Windows:
 `C:\Users\rquis\Documents\quisen.com.br`). Its product carousels use actual app captures.
 Keep Space Hunter screenshots and PT-BR/EN-US product copy consistent with releases.
+
+To refresh the portfolio carousel after a visible UI change: serve this repo's `dist/` on
+`localhost:8080`, then in the portfolio run `node scripts/capture-spacehunter.mjs` with
+`CHROME_PATH` (Chrome or chrome-headless-shell) and `FFMPEG_PATH` (an ffmpeg with libx264, e.g.
+the `ffmpeg-static` npm package). It writes posters to `assets/projects/spacehunter/` and H.264
+loops to `public/spacehunter/`. The app accepts `?demo`, `?3d`, `?lang=pt-BR|en-US` and `?setup`
+URL flags for deterministic screenshots. The portfolio deploys from `main` on push.
