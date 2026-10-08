@@ -1,0 +1,39 @@
+name: build
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+permissions: { contents: read, pages: write, id-token: write }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p spacehunter-core
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p spacehunter --bin spacehunter
+      - uses: actions/upload-artifact@v4
+        with: { name: SpaceHunter-windows, path: target/release/spacehunter.exe }
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - run: cargo install wasm-bindgen-cli --locked
+      - run: ./scripts/build-web.sh
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: [web, test]
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,5 @@
+/target
+/dist
+research/SpaceMonger.exe
+*.png.tmp
+.DS_Store
