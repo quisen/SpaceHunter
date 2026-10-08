@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SpaceHunter</title>
+  <meta name="description" content="Fast disk-usage treemap in 2D and 3D. Everything stays on your device.">
+  <meta name="theme-color" content="#0e1016">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0e1016; overflow: hidden; font-family: system-ui, sans-serif; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    #splash { position: fixed; inset: 0; display: grid; place-content: center; gap: 12px; text-align: center; color: #c9d1e3; }
+    #splash h1 { margin: 0; font-size: 28px; letter-spacing: .5px; }
+    #splash p { margin: 0; opacity: .7; }
+    #splash .bar { width: 220px; height: 4px; border-radius: 2px; background: #1c2230; overflow: hidden; margin: 4px auto 0; }
+    #splash .bar i { display: block; width: 40%; height: 100%; background: #6ea0ff; animation: slide 1.1s ease-in-out infinite; }
+    @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+    #install { position: fixed; right: 12px; bottom: 34px; display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="sh_canvas" tabindex="0"></canvas>
+  <div id="splash"><h1>SpaceHunter</h1><p>Loading…</p><div class="bar"><i></i></div></div>
+  <script type="module">
+    const splash = document.getElementById('splash');
+    const fail = (msg) => { splash.querySelector('p').textContent = msg; splash.querySelector('.bar').remove(); };
+    try {
+      const probe = document.createElement('canvas');
+      if (!probe.getContext('webgl2')) throw new Error('WebGL 2 is required but not available in this browser.');
+      const { default: init, start } = await import('./spacehunter.js');
+      await init();
+      const q = new URLSearchParams(location.search);
+      await start('sh_canvas', q.has('demo'), q.has('3d'));
+      splash.remove();
+    } catch (e) {
+      console.error(e);
+      fail(String(e && e.message || e));
+    }
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW registration failed', e));
+    }
+  </script>
+</body>
+</html>

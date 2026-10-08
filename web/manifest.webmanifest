@@ -2,7 +2,7 @@
   "name": "SpaceHunter",
   "short_name": "SpaceHunter",
   "description": "Fast disk-usage treemap in 2D and 3D. Everything stays on your device.",
-  "id": "/",
+  "id": "/app/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

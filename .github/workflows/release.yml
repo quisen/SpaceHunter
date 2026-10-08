@@ -3,7 +3,7 @@ on:
   push: { branches: [main] }
   pull_request:
   workflow_dispatch:
-permissions: { contents: read, pages: write, id-token: write }
+permissions: { contents: read }
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,27 +13,24 @@ jobs:
       - run: cargo test -p spacehunter-core
   windows:
     runs-on: windows-latest
+    permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p spacehunter --bin spacehunter
+      - run: Copy-Item target/release/spacehunter.exe SpaceHunter.exe
+        shell: pwsh
       - uses: actions/upload-artifact@v4
-        with: { name: SpaceHunter-windows, path: target/release/spacehunter.exe }
-  web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with: { targets: wasm32-unknown-unknown }
-      - run: cargo install wasm-bindgen-cli --locked
-      - run: ./scripts/build-web.sh
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: dist }
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: [web, test]
-    runs-on: ubuntu-latest
-    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
-    steps:
-      - id: d
-        uses: actions/deploy-pages@v4
+        with: { name: SpaceHunter-windows, path: SpaceHunter.exe }
+      # Rolling "latest" release: the landing page links to
+      # https://github.com/quisen/SpaceHunter/releases/latest/download/SpaceHunter.exe
+      - name: Publish latest .exe
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest SpaceHunter.exe --target "$GITHUB_SHA" \
+            --title "SpaceHunter (latest build)" \
+            --notes "Automatic build of commit ${GITHUB_SHA::7}. Windows x64, portable – just run it."
