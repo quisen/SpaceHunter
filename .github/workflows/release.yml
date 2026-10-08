@@ -20,51 +20,87 @@ jobs:
   windows:
     needs: test
     runs-on: windows-latest
-    permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked --release -p spacehunter --bin spacehunter
-      - name: Prepare versioned Windows artifacts
+      - name: Package
         shell: pwsh
         run: |
-          Copy-Item target/release/spacehunter.exe SpaceHunter.exe
-          $digest = (Get-FileHash SpaceHunter.exe -Algorithm SHA256).Hash.ToLower()
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $version = ($metadata.packages | Where-Object { $_.name -eq 'spacehunter' }).version
-          "$digest  SpaceHunter.exe" | Set-Content -Encoding utf8NoBOM SpaceHunter.exe.sha256
-          @{
-            commit = $env:GITHUB_SHA
-            version = $version
-            target = 'x86_64-pc-windows-msvc'
-            exe_sha256 = $digest
-          } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM build-info.json
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item target/release/spacehunter.exe out/SpaceHunter.exe
+          $digest = (Get-FileHash out/SpaceHunter.exe -Algorithm SHA256).Hash.ToLower()
+          "$digest  SpaceHunter.exe" | Set-Content -Encoding utf8NoBOM out/SpaceHunter.exe.sha256
       - uses: actions/upload-artifact@v4
-        with:
-          name: SpaceHunter-windows
-          path: |
-            SpaceHunter.exe
-            SpaceHunter.exe.sha256
-            build-info.json
-      # /releases/latest/download/SpaceHunter.exe resolves to the latest complete build.
-      # Immutable tags preserve previous builds and avoid deleting the current download.
-      - name: Publish Windows release
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        shell: bash
+        with: { name: SpaceHunter-windows, path: out/ }
+  linux:
+    needs: test
+    # Oldest supported runner = oldest glibc (2.35): the binary runs on Ubuntu 22.04+, Debian 12+, Fedora 36+…
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked --release -p spacehunter --bin spacehunter
+      - name: Package
+        run: |
+          NAME=SpaceHunter-linux-x86_64
+          mkdir -p "pkg/$NAME" out
+          install -m 755 target/release/spacehunter "pkg/$NAME/spacehunter"
+          install -m 644 web/icons/icon-512.png "pkg/$NAME/spacehunter.png"
+          install -m 755 packaging/linux/install.sh "pkg/$NAME/install.sh"
+          install -m 644 packaging/linux/README.txt "pkg/$NAME/README.txt"
+          tar -C pkg -czf "out/$NAME.tar.gz" "$NAME"
+          (cd out && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+      - uses: actions/upload-artifact@v4
+        with: { name: SpaceHunter-linux, path: out/ }
+  # One immutable release per commit with every platform; /releases/latest/download/<asset>
+  # only moves once all of them are uploaded.
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - name: Write build-info.json
+        run: |
+          python3 - <<'PY'
+          import json, tomllib
+          version = tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"]
+          sha = lambda f: open(f"out/{f}.sha256", encoding="utf-8-sig").read().split()[0]
+          info = {
+              "commit": __import__("os").environ["GITHUB_SHA"],
+              "version": version,
+              "exe_sha256": sha("SpaceHunter.exe"),
+              "assets": {
+                  "SpaceHunter.exe": {"target": "x86_64-pc-windows-msvc", "sha256": sha("SpaceHunter.exe")},
+                  "SpaceHunter-linux-x86_64.tar.gz": {"target": "x86_64-unknown-linux-gnu", "glibc": "2.35", "sha256": sha("SpaceHunter-linux-x86_64.tar.gz")},
+              },
+          }
+          json.dump(info, open("out/build-info.json", "w"), indent=2)
+          print(json.dumps(info, indent=2))
+          PY
+      - name: Publish release
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           TAG="build-$GITHUB_SHA"
-          VERSION=$(python -c 'import json; print(json.load(open("build-info.json"))["version"])')
+          VERSION=$(python3 -c 'import json; print(json.load(open("out/build-info.json"))["version"])')
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" SpaceHunter.exe SpaceHunter.exe.sha256 build-info.json --clobber
+            gh release upload "$TAG" out/* --clobber
             gh release edit "$TAG" --latest
           else
-            gh release create "$TAG" SpaceHunter.exe SpaceHunter.exe.sha256 build-info.json \
+            gh release create "$TAG" out/* \
               --target "$GITHUB_SHA" --latest --title "Space Hunter $VERSION (${GITHUB_SHA::7})" \
-              --notes "Windows x64 portable. Version $VERSION. Source commit: $GITHUB_SHA. Includes the current visual identity, 2D overview and PT-BR/EN-US interface. See build-info.json and SHA-256 for build verification."
+              --notes "Version $VERSION, source commit $GITHUB_SHA.
+
+          - **Windows** (10/11, x64): \`SpaceHunter.exe\`, portable, just run it.
+          - **Linux** (x86_64, glibc 2.35+): \`SpaceHunter-linux-x86_64.tar.gz\`, extract and run \`./spacehunter\` (or \`./install.sh\` to add it to your app menu).
+
+          Each file has a matching \`.sha256\`; \`build-info.json\` lists them all."
           fi
-      - name: Verify the public download
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        shell: bash
-        run: python scripts/verify-release.py --commit "$GITHUB_SHA"
+      - name: Verify the public downloads
+        run: python3 scripts/verify-release.py --commit "$GITHUB_SHA"
