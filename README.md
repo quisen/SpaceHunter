@@ -42,7 +42,7 @@ cargo zigbuild --release --target x86_64-pc-windows-gnu -p spacehunter --bin spa
 ### Deploy the PWA (Cloudflare Workers)
 `dist/` is generated, not committed, so build first and deploy that folder:
 ```sh
-./scripts/build-web.sh && npx wrangler deploy   # uses wrangler.jsonc → assets: ./dist
+./scripts/deploy.sh   # builds, runs `wrangler deploy` (needs Node >= 22) and checks spacehunter.js/.wasm are really served
 ```
 The worker must serve `index.html`, `spacehunter.js`, `spacehunter_bg.wasm`, `sw.js`, `manifest.webmanifest` and `icons/` from the same folder.
 

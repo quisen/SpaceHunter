@@ -54,7 +54,8 @@ pub fn scan(root: &Path, opts: ScanOptions, progress: Arc<Progress>) -> Tree {
         progress: progress.clone(),
     };
     rayon::scope(|s| walk(s, &shared, root.to_path_buf(), 0));
-    progress.done.store(true, Relaxed);
+    // `done` is set by the caller only after the result has been handed over (otherwise the UI can see
+    // "done" with an empty inbox and silently drop the scan).
     shared.builder.into_inner().unwrap().finish()
 }
 
@@ -198,7 +199,6 @@ mod tests {
         let p = Arc::new(Progress::default());
         let t = scan(Path::new("."), ScanOptions::default(), p.clone());
         assert!(t.len() > 1);
-        assert!(p.done.load(Relaxed));
         assert_eq!(t.total_size(), p.bytes.load(Relaxed));
     }
 }
