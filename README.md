@@ -1,90 +1,120 @@
-# SpaceHunter
+<div align="center">
 
-A fast, modern re-creation of the classic **SpaceMonger** disk-space visualiser, written in Rust.
-See where your space went — in **2D** (nested treemap) or **3D** (extruded city).
+<img src="web/icons/logo.svg" width="88" alt="Space Hunter logo">
 
-* **Windows `.exe`** (native, GPU accelerated) — also builds for Linux/macOS
-* **PWA** (installable, offline, WebAssembly) — pick a folder, nothing is uploaded
+# Space Hunter
 
-![toolbar of the original](research/assets/toolbar.png)
+**See where your disk space went.**
+A fast disk-usage map in 2D and 3D, for Windows, Linux and the browser.
 
-## Features
-- Parallel scanner (~1 M entries/s on SSD), size-on-disk accounting, hard-link/symlink/junction safe
-- **Classic** layout (exact SpaceMonger algorithm, density + bias) and **Squarified** layout
-- 2D treemap with folder frames, labels, hover tooltips, selection, zoom in/out/full (animated)
-- 3D view: orbit / pan / zoom, height ∝ file size, picking, depth-buffered instanced rendering
-- Colours: by file type, original Rainbow palette, depth, size heat-map, monochrome
-- Breadcrumb, folder contents, largest-files list, free-space block, Run/Open, optional Delete
+[**Download for Windows**](https://github.com/quisen/SpaceHunter/releases/latest/download/SpaceHunter.exe) ·
+[**Download for Linux**](https://github.com/quisen/SpaceHunter/releases/latest/download/SpaceHunter-linux-x86_64.tar.gz) ·
+[**Open in your browser**](https://space-hunter.quisen.com.br/app/)
 
-## 2D overview
+[Website](https://space-hunter.quisen.com.br) · [All releases](https://github.com/quisen/SpaceHunter/releases) · [MIT license](LICENSE)
 
-The default 2D map shows one folder level at a time. Tile area represents size;
-small entries are grouped as Other items. Select a tile for details, double-click
-a folder to explore it, and use Backspace or breadcrumbs to return. Double-click
-Other items to inspect the detailed map. All files keeps the recursive map available,
-with a limited number of readable labels. Overview rendering caches its mesh and
-caps labels at 16 tiles instead of drawing text throughout the entire subtree.
+<img src="web/landing/shots/2d.png" width="49%" alt="2D map: folders as blocks proportional to their size">
+<img src="web/landing/shots/3d.png" width="49%" alt="3D view: files as towers">
 
-## Controls
-| | |
+</div>
+
+## What it does
+
+Space Hunter scans a folder or a whole drive and draws it as a treemap: every
+folder and file is a block whose area matches its size. The biggest space
+hogs stand out at a glance, and you can dive into any folder to see what is
+inside.
+
+- **2D map.** One folder level at a time by default (*Overview*), or every
+  file at once (*All files*). Click a block for details, double-click to go in.
+- **3D view.** The same map as a city of towers, where bigger files are taller.
+  Orbit, pan and zoom.
+- **Details panel.** Size, share of the current view, file and folder counts,
+  the folder's contents and its largest files.
+- **Fast native scanner.** Scans folders in parallel, counts real size on disk,
+  and safely skips symlinks, hard-link duplicates and junctions.
+- **Actions.** Open a file, show it in your file manager, or (if you enable it
+  in Settings) delete it.
+- **Private.** Everything runs on your device. No account, no uploads, no
+  telemetry. The web version works offline after the first visit.
+- **Português and English.** Switch in Settings.
+
+## Download
+
+| Platform | Get it | Notes |
+|---|---|---|
+| **Windows** 10/11, x64 | [`SpaceHunter.exe`](https://github.com/quisen/SpaceHunter/releases/latest/download/SpaceHunter.exe) | Portable, no installer. Not code-signed yet, so Windows may show a SmartScreen prompt: *More info → Run anyway*. |
+| **Linux** x86_64 | [`SpaceHunter-linux-x86_64.tar.gz`](https://github.com/quisen/SpaceHunter/releases/latest/download/SpaceHunter-linux-x86_64.tar.gz) | glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer). Extract and run `./spacehunter`, or `./install.sh` to add it to your app menu. |
+| **Browser** | [space-hunter.quisen.com.br/app](https://space-hunter.quisen.com.br/app/) | Chrome or Edge recommended. Installable as an app. Browsers don't allow opening a drive root such as `C:\`, so pick a folder or use the native app for whole drives. |
+| macOS | build from source | Not tested. |
+
+Every release includes a `.sha256` file for each download and a `build-info.json`
+naming the exact source commit.
+
+## Using it
+
+| Action | How |
 |---|---|
-| Double-click folder / `Enter` | zoom in |
-| `Backspace` / wheel down | zoom out |
-| `Home` | zoom full |
-| `F5` | rescan |
-| `Ctrl+O` | open folder |
-| `2` / `3` | 2D / 3D |
-| 3D: drag / right-drag / wheel | orbit / pan / dolly |
+| Open a folder / drive | **Open folder** or **Drives**, or `Ctrl+O` |
+| Go into a folder | Double-click it, select it and press `Enter`, or scroll up over it |
+| Go back | `Backspace`, the **‹** button, scroll down, or click a part of the path |
+| Back to the top | `Home` |
+| Scan again | **Refresh** or `F5` |
+| 2D / 3D | The **2D / 3D** switch, or `2` / `3` |
+| 3D camera | Drag to orbit, right-drag to pan, scroll to zoom |
+| Settings | **Settings** (`Esc` closes it) |
 
-## Build
+From the command line: `spacehunter [PATH] [--3d] [--demo]`.
+
+## Build from source
+
+You need [Rust](https://rustup.rs) (stable).
+
 ```sh
-# native
-cargo run --release -p spacehunter -- [PATH] [--3d] [--demo]
+# Native app (Windows, Linux, macOS)
+cargo run --release -p spacehunter -- [PATH]
 
-# Windows .exe from Linux (needs zig: pip install ziglang; cargo install cargo-zigbuild)
-rustup target add x86_64-pc-windows-gnu
-cargo zigbuild --release --target x86_64-pc-windows-gnu -p spacehunter --bin spacehunter
-
-# PWA (needs: rustup target add wasm32-unknown-unknown; cargo install wasm-bindgen-cli)
-./scripts/build-web.sh && python3 -m http.server -d dist 8080   # http://localhost:8080
+# Web app: needs the wasm target and wasm-bindgen-cli
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli
+./scripts/build-web.sh
+python3 -m http.server -d dist 8080      # open http://localhost:8080
 ```
-### Publish Windows and web together
 
-Follow [AGENTS.md](AGENTS.md). Build and commit `dist/`, then push `main`.
-GitHub Actions publishes the Windows binary with an immutable commit tag, build
-metadata and SHA-256. Once the Windows workflow succeeds:
+Run the checks with `cargo fmt --all --check`, `cargo test --workspace` and
+`cargo clippy --workspace --all-targets`.
+
+The browser build uses the File System Access API (Chromium) and falls back to
+`<input webkitdirectory>` elsewhere. It needs HTTPS or `localhost` to be
+installable.
+
+## Project layout
+
+| Path | What |
+|---|---|
+| `crates/core` | Tree model, parallel scanner, treemap layouts. No UI code. |
+| `crates/app` | The app: egui UI, 2D and 3D renderers, native and web glue, translations. |
+| `web/` | Web app shell, service worker, icons and the landing page. |
+| `dist/` | Built website (landing at `/`, app at `/app/`). Committed, because Cloudflare deploys it as is. |
+| `packaging/linux/` | Files shipped in the Linux package. |
+| `scripts/` | Web build, deploy, icon generation and release verification. |
+| `research/` | Notes from studying the original SpaceMonger. |
+
+## Releasing
+
+Pushing to `main` builds Windows and Linux and publishes both as one release
+(see `.github/workflows/release.yml`). Cloudflare deploys the committed `dist/`.
+Then check that the public downloads match the commit:
 
 ```sh
 python3 scripts/verify-release.py --commit "$(git rev-parse HEAD)"
-./scripts/deploy.sh
 ```
 
-The verification downloads the actual public executable and checks its commit and
-checksum. `deploy.sh` refuses to publish with uncommitted changes or a stale Windows
-release. The download URL remains `/releases/latest/download/SpaceHunter.exe`.
+The full checklist, including keeping the website, the downloads and the
+portfolio screenshots in sync, is in [AGENTS.md](AGENTS.md).
 
-The worker must serve `index.html`, `spacehunter.js`, `spacehunter_bg.wasm`, `sw.js`, `manifest.webmanifest` and `icons/` from the same folder.
+## Credits
 
-The PWA needs HTTPS (or `localhost`) to be installable; folder access uses the File System Access API (Chromium) with an `<input webkitdirectory>` fallback elsewhere.
-
-## Layout
-- `crates/core` – tree model, scanner, layouts (`classic`, squarified), formatting. No UI dependencies.
-- `crates/app` – egui/eframe UI, 2D mesh renderer, 3D GL renderer, native + web platform glue.
-- `research/` – reverse-engineering notes of SpaceMonger 1.4 ([FINDINGS.md](research/FINDINGS.md)) and tools.
-
-MIT licensed. SpaceMonger is © Sean Werkema; this project contains no code from it.
-
-## Language and visual identity
-
-The app and landing support `pt-BR` and `en-US`. Choose the language in the app
- toolbar or the landing header. The browser shares and remembers that preference;
- the native app saves it in its configuration directory. On native systems,
- `SPACEHUNTER_LANG=pt-BR` sets the initial language when there is no saved preference.
-
-Starting without arguments shows the welcome screen. Folder selection requires a
- click on **Choose a folder**, or `Ctrl+O`. `F5` only rescans a loaded folder.
- Explicit `PATH` and `--demo` arguments still load their requested data at startup.
-
-The editable brand source is `web/icons/logo.svg`; the visual guidelines are in
- `web/landing/brand/identity.md`. Run `python3 scripts/make_icons.py` to regenerate
- the matching PNG icons, then `./scripts/build-web.sh` to update the committed web build.
+Inspired by **SpaceMonger** by Sean Werkema. Space Hunter is an independent
+re-creation and contains no SpaceMonger code. Made by [Quisen](https://quisen.com.br).
+Released under the [MIT license](LICENSE).
