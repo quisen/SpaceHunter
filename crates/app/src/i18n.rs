@@ -20,6 +20,14 @@ impl Language {
         #[cfg(target_arch = "wasm32")]
         {
             let window = web_sys::window().unwrap();
+            // `?lang=pt-BR` / `?lang=en-US` overrides everything (used for screenshots and links).
+            let search = window.location().search().unwrap_or_default();
+            if let Some(l) = search
+                .split(['?', '&'])
+                .find_map(|kv| kv.strip_prefix("lang="))
+            {
+                return Self::parse(l);
+            }
             let stored = window
                 .local_storage()
                 .ok()
@@ -106,8 +114,8 @@ impl Language {
             "Files" => "Arquivos",
             "Folders" => "Pastas",
             "Modified" => "Modificado",
-            "CONTENTS OF THIS VIEW" => "CONTEÚDO DESTA VISUALIZAÇÃO",
-            "LARGEST FILES IN VIEW" => "MAIORES ARQUIVOS",
+            "IN THIS FOLDER" => "NESTA PASTA",
+            "LARGEST FILES" => "MAIORES ARQUIVOS",
             "SpaceHunter Setup" => "Configurações do Space Hunter",
             "File layout" => "Mapa de arquivos",
             "Algorithm:" => "Algoritmo:",
@@ -150,11 +158,11 @@ impl Language {
             "Try with demo data" => "Experimentar com dados de exemplo",
             "…or drop a folder onto this page.\nFiles never leave your device." => "…ou arraste uma pasta para esta página.\nSeus arquivos ficam no seu dispositivo.",
             "Ready." => "Pronto.",
-            "By file type" => "Por tipo de arquivo",
+            "By file type" => "Tipo de arquivo",
             "Rainbow" => "Arco-íris",
-            "By depth" => "Por profundidade",
-            "Size heat-map" => "Mapa de calor por tamanho",
-            "Monochrome" => "Monocromático",
+            "By depth" => "Profundidade",
+            "Size heat-map" => "Tamanho",
+            "Monochrome" => "Mono",
             "Too many files" => "Arquivos em excesso",
             "Very many files" => "Muitos arquivos",
             "Lots of files" => "Vários arquivos",
@@ -168,6 +176,45 @@ impl Language {
             "Open with the default application / show in file manager" => "Abrir com aplicativo padrão / mostrar no gerenciador",
             "Disabled – enable it in Setup" => "Desativado – habilite nas configurações",
             "drag: orbit · right-drag: pan · wheel: zoom · double-click: enter folder" => "arraste: girar · botão direito: mover · roda: zoom · clique duplo: entrar",
+            "Refresh" => "Atualizar",
+            "Settings" => "Configurações",
+            "Details" => "Detalhes",
+            "Close" => "Fechar",
+            "Open this folder" => "Entrar na pasta",
+            "Open file" => "Abrir arquivo",
+            "MAP" => "MAPA",
+            "Layout" => "Formato",
+            "Classic is SpaceMonger's look. Squares are easier to compare." => "O clássico lembra o SpaceMonger. Quadrados facilitam a comparação.",
+            "Classic" => "Clássico",
+            "Squares" => "Quadrados",
+            "Detail" => "Detalhe",
+            "How many small files get a block of their own." => "Quantos arquivos pequenos ganham um bloco próprio.",
+            "Less" => "Menos",
+            "More" => "Mais",
+            "Max" => "Máximo",
+            "Folder titles" => "Títulos das pastas",
+            "Show free space" => "Mostrar espaço livre",
+            "Available when you scan a whole drive." => "Disponível ao analisar uma unidade inteira.",
+            "APPEARANCE" => "APARÊNCIA",
+            "Colors" => "Cores",
+            "Names on blocks" => "Nomes nos blocos",
+            "Shading" => "Relevo nos blocos",
+            "Animations" => "Animações",
+            "Tips on hover" => "Dicas ao passar o mouse",
+            "3D VIEW" => "VISTA 3D",
+            "Height by size" => "Altura pelo tamanho",
+            "Bigger files become taller towers." => "Arquivos maiores viram torres mais altas.",
+            "Tower height" => "Altura das torres",
+            "Low" => "Baixa",
+            "Medium" => "Média",
+            "High" => "Alta",
+            "SCAN" => "ANÁLISE",
+            "Size on disk" => "Tamanho em disco",
+            "Counts the space really used on the drive. Applies on the next scan." => "Conta o espaço realmente ocupado no disco. Vale na próxima análise.",
+            "Allow deleting" => "Permitir excluir",
+            "Adds a Delete button to the details panel. Deleting is permanent." => "Adiciona o botão Excluir no painel de detalhes. A exclusão é permanente.",
+            "LANGUAGE" => "IDIOMA",
+            "Double-click: open folder · Backspace: back · Ctrl+O: open · F5: refresh" => "Clique duplo: entrar · Backspace: voltar · Ctrl+O: abrir · F5: atualizar",
             _ => key,
         }
     }

@@ -49,14 +49,6 @@ pub struct Settings {
     pub dark: bool,
 }
 
-pub const DENSITY_LABELS: [&str; 6] = [
-    "Too many files",
-    "Very many files",
-    "Lots of files",
-    "Normal",
-    "Very few files",
-    "Too few files",
-];
 const DENSITY_AREA: [f32; 6] = [3.0, 10.0, 22.0, 40.0, 110.0, 320.0];
 
 impl Default for Settings {
@@ -138,7 +130,6 @@ pub struct SpaceHunter {
     anim: Option<Anim>,
     scroll_acc: f32,
     show_setup: bool,
-    show_about: bool,
     show_side: bool,
     confirm_delete: Option<NodeId>,
     ctx_target: Option<NodeId>,
@@ -183,7 +174,6 @@ impl SpaceHunter {
             anim: None,
             scroll_acc: 0.0,
             show_setup: false,
-            show_about: false,
             show_side: true,
             confirm_delete: None,
             ctx_target: None,
@@ -200,7 +190,14 @@ impl SpaceHunter {
             args,
         };
         #[cfg(target_arch = "wasm32")]
-        crate::web::install_drop(&cc.egui_ctx, app.drop_slot.clone());
+        {
+            crate::web::install_drop(&cc.egui_ctx, app.drop_slot.clone());
+            // `?setup` opens the settings panel straight away (handy for screenshots).
+            let search = web_sys::window()
+                .and_then(|w| w.location().search().ok())
+                .unwrap_or_default();
+            app.show_setup = search.contains("setup");
+        }
         if app.args.demo {
             app.job = Some(platform::demo(&cc.egui_ctx));
         } else if let Some(p) = app.args.path.clone() {
@@ -524,13 +521,13 @@ impl SpaceHunter {
 
     // ───────────────────────────── UI pieces ─────────────────────────────
 
-    fn toolbar(&mut self, ui: &mut egui::Ui, canvas: Rect) {
+    fn toolbar(&mut self, ui: &mut egui::Ui) {
         let lang = self.language;
         let ctx = ui.ctx().clone();
         let has = self.tree.is_some();
-        ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new("SpaceHunter").strong().size(15.0).color(ACCENT));
-            ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Space Hunter").strong().size(15.0).color(TEXT));
+            ui.add_space(12.0);
             #[cfg(not(target_arch = "wasm32"))]
             {
                 if ui.add(primary_button(lang.text("Open folder"))).on_hover_text(lang.text("Choose a folder or drive (Ctrl+O)")).clicked() {
@@ -550,68 +547,30 @@ impl SpaceHunter {
                 if ui.add(primary_button(lang.text("Open folder"))).on_hover_text(lang.text("Choose a folder to analyse (Ctrl+O). Nothing is uploaded – everything stays in your browser.")).clicked() {
                     self.open_dialog(&ctx);
                 }
-                if ui.button(lang.text("Demo")).clicked() {
+                if ui.add(tool_button(lang.text("Demo"))).clicked() {
                     self.job = Some(platform::demo(&ctx));
                 }
             }
-            if ui.add_enabled(has, tool_button(lang.text("Rescan"))).on_hover_text(lang.text("Scan again (F5)")).clicked() {
+            if has && ui.add(tool_button(lang.text("Refresh"))).on_hover_text(lang.text("Scan again (F5)")).clicked() {
                 self.rescan(&ctx);
             }
-            ui.separator();
-            if ui.add_enabled(has, tool_button(lang.text("Full view"))).on_hover_text(lang.text("Zoom full (Home)")).clicked() {
-                self.zoom_full(canvas);
-            }
-            if ui.add_enabled(has && self.view_root != 0, tool_button(lang.text("Parent folder"))).on_hover_text(lang.text("Zoom out (Backspace)")).clicked() {
-                self.zoom_out(canvas);
-            }
-            let sel_dir = self.selected.filter(|&n| self.tree.as_ref().is_some_and(|t| t.node(n).is_dir && n != self.view_root));
-            if ui.add_enabled(sel_dir.is_some(), tool_button(lang.text("Zoom into folder"))).on_hover_text(lang.text("Zoom into the selected folder (Enter / double-click)")).clicked() {
-                self.zoom_to(sel_dir.unwrap(), canvas);
-            }
-            ui.separator();
-            ui.add_enabled_ui(self.disk.is_some(), |ui| {
-                if pill(ui, lang.text("Free space"), self.s.show_free).on_hover_text(lang.text("Show the free space of the drive as one more block")).clicked() {
-                    self.s.show_free = !self.s.show_free;
-                    self.rev += 1;
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if pill(ui, lang.text("Settings"), self.show_setup).clicked() {
+                    self.show_setup = !self.show_setup;
+                }
+                if has {
+                    if pill(ui, lang.text("Details"), self.show_side && !self.show_setup).clicked() {
+                        if self.show_setup {
+                            self.show_setup = false;
+                            self.show_side = true;
+                        } else {
+                            self.show_side = !self.show_side;
+                        }
+                    }
+                    ui.add_space(6.0);
+                    segmented(ui, &mut self.mode, &[(Mode::D2, "2D"), (Mode::D3, "3D")]);
                 }
             });
-            ui.separator();
-            if pill(ui, "2D", self.mode == Mode::D2).clicked() {
-                self.mode = Mode::D2;
-            }
-            if pill(ui, "3D", self.mode == Mode::D3).clicked() {
-                self.mode = Mode::D3;
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                ui.separator();
-                let t = self.selected.filter(|&n| n != 0 && self.root_path.is_some());
-                if ui.add_enabled(t.is_some(), tool_button(lang.text("Open in file manager"))).on_hover_text(lang.text("Open with the default application / show in file manager")).clicked() {
-                    self.run_selected();
-                }
-                let can_del = t.is_some() && self.s.delete_enabled;
-                let r = ui.add_enabled(can_del, tool_button(lang.text("Delete")));
-                let r = if self.s.delete_enabled { r } else { r.on_disabled_hover_text(lang.text("Disabled – enable it in Setup")) };
-                if r.clicked() {
-                    self.confirm_delete = t;
-                }
-            }
-            ui.separator();
-            let previous_language = self.language;
-            egui::ComboBox::from_id_salt("language").selected_text(if self.language == Language::PtBr { "PT-BR" } else { "EN-US" }).show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.language, Language::PtBr, "Português (Brasil)");
-                ui.selectable_value(&mut self.language, Language::EnUs, "English (US)");
-            });
-            if self.language != previous_language { self.language.save(); self.scene = None; self.rev += 1; }
-            if ui.add(tool_button(lang.text("Setup"))).clicked() {
-                self.show_setup = !self.show_setup;
-            }
-            if ui.add(tool_button(lang.text("About"))).clicked() {
-                self.show_about = !self.show_about;
-            }
-            if pill(ui, lang.text("Panel"), self.show_side).clicked() {
-                self.show_side = !self.show_side;
-            }
         });
     }
 
@@ -647,28 +606,7 @@ impl SpaceHunter {
 
     fn breadcrumb(&mut self, ui: &mut egui::Ui, canvas: Rect) {
         let Some(t) = self.tree() else { return };
-        if self.mode == Mode::D2 {
-            let lang = self.language;
-            ui.horizontal_wrapped(|ui| {
-                for (value, label) in [(true, "Overview"), (false, "All files")] {
-                    if ui
-                        .selectable_label(self.s.overview == value, lang.text(label))
-                        .clicked()
-                        && self.s.overview != value
-                    {
-                        self.s.overview = value;
-                        self.rev += 1;
-                        self.anim = None;
-                    }
-                }
-                ui.separator();
-                ui.label(
-                    egui::RichText::new(lang.text("Click for details · Double-click to explore"))
-                        .small()
-                        .weak(),
-                );
-            });
-        }
+        let lang = self.language;
         let mut chain = Vec::new();
         let mut n = self.view_root;
         while n != NONE {
@@ -677,35 +615,57 @@ impl SpaceHunter {
         }
         chain.reverse();
         let mut target = None;
-        ui.horizontal_wrapped(|ui| {
+        let mut up = false;
+        ui.horizontal(|ui| {
+            let r = ui.add_enabled(
+                self.view_root != 0,
+                egui::Button::new(egui::RichText::new("‹").size(20.0))
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(Stroke::NONE)
+                    .min_size(egui::vec2(30.0, 26.0)),
+            );
+            if r.on_hover_text(lang.text("Zoom out (Backspace)")).clicked() {
+                up = true;
+            }
             ui.spacing_mut().item_spacing.x = 2.0;
             for (i, &n) in chain.iter().enumerate() {
                 if i > 0 {
-                    ui.label(egui::RichText::new("›").weak());
+                    ui.label(egui::RichText::new("/").color(HAIR_STRONG));
                 }
-                let name = if i == 0 {
-                    t.name(n).to_owned()
-                } else {
-                    t.name(n).to_owned()
-                };
                 let last = i + 1 == chain.len();
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new(name).strong().underline())
-                            .frame(false)
-                            .selected(last),
-                    )
-                    .clicked()
-                    && !last
-                {
+                let text = egui::RichText::new(t.name(n).to_owned()).color(if last {
+                    TEXT
+                } else {
+                    MUTED
+                });
+                let text = if last { text.strong() } else { text };
+                if ui.add(egui::Button::new(text).frame(false)).clicked() && !last {
                     target = Some(n);
                 }
             }
-            ui.label(
-                egui::RichText::new(format!("   {}", fmt::size(t.node(self.view_root).size)))
-                    .weak(),
-            );
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(fmt::size(t.node(self.view_root).size)).color(MUTED));
+            if self.mode == Mode::D2 {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let mut ov = self.s.overview;
+                    if segmented(
+                        ui,
+                        &mut ov,
+                        &[
+                            (true, lang.text("Overview")),
+                            (false, lang.text("All files")),
+                        ],
+                    ) {
+                        self.s.overview = ov;
+                        self.rev += 1;
+                        self.anim = None;
+                    }
+                });
+            }
         });
+        if up {
+            self.zoom_out(canvas);
+        }
         if let Some(n) = target {
             self.zoom_to_any(n, canvas);
         }
@@ -728,64 +688,115 @@ impl SpaceHunter {
             ui.label(lang.text("Nothing loaded."));
             return;
         };
+        let mut go_into: Option<NodeId> = None;
+        #[allow(unused_mut)]
+        let mut run = false;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if let Some(n) = self.selected.or(Some(self.view_root)) {
                     let node = t.node(n);
-                    ui.heading(if n == 0 {
-                        t.name(0).to_owned()
-                    } else {
-                        t.name(n).to_owned()
-                    });
+                    ui.label(
+                        egui::RichText::new(t.name(n).to_owned())
+                            .size(17.0)
+                            .strong(),
+                    );
                     ui.label(
                         egui::RichText::new(t.path(n, std::path::MAIN_SEPARATOR))
                             .small()
-                            .weak(),
+                            .color(MUTED),
                     );
-                    ui.add_space(4.0);
-                    egui::Grid::new("details").num_columns(2).show(ui, |ui| {
-                        ui.label(lang.text("Size"));
-                        ui.label(format!(
-                            "{} ({} bytes)",
-                            fmt::size(node.size),
-                            group(node.size)
-                        ));
-                        ui.end_row();
-                        let rootsz = t.node(self.view_root).size.max(1);
-                        ui.label(lang.text("Of view"));
-                        ui.label(format!("{:.2} %", node.size as f64 / rootsz as f64 * 100.0));
-                        ui.end_row();
-                        if node.is_dir {
-                            ui.label(lang.text("Files"));
-                            ui.label(group(node.files as u64));
-                            ui.end_row();
-                            ui.label(lang.text("Folders"));
-                            let (tid, cn, v) = self.dirs_cache.get();
-                            let dirs = if tid == self.tree_id && cn == n {
-                                v
-                            } else {
-                                let v = t.dir_count(n);
-                                self.dirs_cache.set((self.tree_id, n, v));
-                                v
-                            };
-                            ui.label(group(dirs));
-                            ui.end_row();
-                        }
-                        let d = fmt::date(node.mtime);
-                        if !d.is_empty() {
-                            ui.label(lang.text("Modified"));
-                            ui.label(d + " UTC");
-                            ui.end_row();
+                    ui.add_space(8.0);
+                    let rootsz = t.node(self.view_root).size.max(1);
+                    let pct = node.size as f64 / rootsz as f64 * 100.0;
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(fmt::size(node.size))
+                                .size(26.0)
+                                .strong()
+                                .color(ACCENT),
+                        )
+                        .on_hover_text(format!("{} bytes", group(node.size)));
+                        if n != self.view_root {
+                            ui.label(
+                                egui::RichText::new(localized_format!(
+                                    lang,
+                                    "{:.1}% of this view",
+                                    "{:.1}% desta vista",
+                                    pct
+                                ))
+                                .color(MUTED),
+                            );
                         }
                     });
+                    let mut facts = Vec::new();
+                    if node.is_dir {
+                        let (tid, cn, v) = self.dirs_cache.get();
+                        let dirs = if tid == self.tree_id && cn == n {
+                            v
+                        } else {
+                            let v = t.dir_count(n);
+                            self.dirs_cache.set((self.tree_id, n, v));
+                            v
+                        };
+                        facts.push(localized_format!(
+                            lang,
+                            "{} files",
+                            "{} arquivos",
+                            group(node.files as u64)
+                        ));
+                        facts.push(localized_format!(
+                            lang,
+                            "{} folders",
+                            "{} pastas",
+                            group(dirs)
+                        ));
+                    }
+                    let d = fmt::date(node.mtime);
+                    if !d.is_empty() {
+                        facts.push(localized_format!(
+                            lang,
+                            "modified {}",
+                            "modificado em {}",
+                            d
+                        ));
+                    }
+                    if !facts.is_empty() {
+                        ui.label(egui::RichText::new(facts.join(" · ")).color(MUTED));
+                    }
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if node.is_dir
+                            && n != self.view_root
+                            && ui.button(lang.text("Open this folder")).clicked()
+                        {
+                            go_into = Some(n);
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if self.root_path.is_some() && n != 0 {
+                            let label = if node.is_dir {
+                                lang.text("Show in file manager")
+                            } else {
+                                lang.text("Open file")
+                            };
+                            if ui.button(label).clicked() {
+                                run = true;
+                            }
+                            if self.s.delete_enabled
+                                && ui
+                                    .add(egui::Button::new(
+                                        egui::RichText::new(lang.text("Delete…")).color(DANGER),
+                                    ))
+                                    .clicked()
+                            {
+                                self.confirm_delete = Some(n);
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
                 }
-                ui.separator();
-                ui.label(
-                    egui::RichText::new(lang.text("CONTENTS OF THIS VIEW"))
-                        .size(10.5)
-                        .color(MUTED),
-                );
+                ui.add_space(6.0);
+                section(ui, lang.text("IN THIS FOLDER"));
                 let vr = t.node(self.view_root).size.max(1);
                 let mut go = None;
                 for &c in t.children(self.view_root).iter().take(40) {
@@ -837,15 +848,10 @@ impl SpaceHunter {
                         go = Some(c);
                     }
                 }
-                if let Some(g) = go {
+                if let Some(g) = go.or(go_into.take()) {
                     self.zoom_to(g, canvas);
                 }
-                ui.separator();
-                ui.label(
-                    egui::RichText::new(lang.text("LARGEST FILES IN VIEW"))
-                        .size(10.5)
-                        .color(MUTED),
-                );
+                section(ui, lang.text("LARGEST FILES"));
                 self.top_files(&t);
                 for &f in &self.top_files.clone() {
                     let node = t.node(f);
@@ -864,162 +870,202 @@ impl SpaceHunter {
                     }
                 }
             });
+        #[cfg(not(target_arch = "wasm32"))]
+        if run {
+            self.run_selected();
+        }
+        let _ = run;
     }
 
-    fn setup_window(&mut self, ctx: &egui::Context) {
+    fn settings_panel(&mut self, ui: &mut egui::Ui) {
         let lang = self.language;
-        let mut open = self.show_setup;
         let mut changed = false;
-        egui::Window::new(lang.text("SpaceHunter Setup"))
-            .open(&mut open)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.strong(lang.text("File layout"));
-                ui.horizontal(|ui| {
-                    ui.label(lang.text("Algorithm:"));
-                    changed |= ui
-                        .selectable_value(
-                            &mut self.s.algo,
-                            Algo::Classic,
-                            lang.text("Classic (SpaceMonger)"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .selectable_value(
-                            &mut self.s.algo,
-                            Algo::Squarified,
-                            lang.text("Squarified"),
-                        )
-                        .changed();
-                });
-                ui.horizontal(|ui| {
-                    ui.label(lang.text("Density:"));
-                    let mut d = self.s.density as f32;
-                    if ui
-                        .add(
-                            egui::Slider::new(&mut d, 0.0..=5.0)
-                                .step_by(1.0)
-                                .show_value(false),
-                        )
-                        .changed()
-                    {
-                        self.s.density = d as usize;
-                        changed = true;
-                    }
-                    ui.label(lang.text(DENSITY_LABELS[self.s.density.min(5)]));
-                });
-                ui.horizontal(|ui| {
-                    ui.label(lang.text("Bias:"));
-                    ui.label(lang.text("Vert"));
-                    changed |= ui
-                        .add(egui::Slider::new(&mut self.s.bias, -1.0..=1.0).show_value(false))
-                        .changed();
-                    ui.label(lang.text("Horz"));
-                });
-                changed |= ui
-                    .checkbox(&mut self.s.headers, lang.text("Folder title bars"))
-                    .changed();
-                ui.separator();
-                ui.strong(lang.text("Display colors"));
-                egui::ComboBox::from_id_salt("scheme")
-                    .selected_text(lang.text(self.s.scheme.label()))
-                    .show_ui(ui, |ui| {
-                        for s in Scheme::ALL {
-                            if ui
-                                .selectable_value(&mut self.s.scheme, s, lang.text(s.label()))
-                                .changed()
-                            {
-                                changed = true;
-                            }
-                        }
-                    });
-                changed |= ui
-                    .checkbox(&mut self.s.bevel, lang.text("3D shaded blocks"))
-                    .changed();
-                changed |= ui
-                    .checkbox(&mut self.s.labels, lang.text("Show names inside blocks"))
-                    .changed();
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(lang.text("Settings"))
+                    .size(18.0)
+                    .strong(),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .checkbox(&mut self.s.dark, lang.text("Dark theme"))
-                    .changed()
+                    .add(
+                        egui::Button::new(egui::RichText::new("×").size(20.0))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE)
+                            .min_size(egui::vec2(30.0, 30.0)),
+                    )
+                    .on_hover_text(lang.text("Close"))
+                    .clicked()
                 {
-                    ctx.set_theme(if self.s.dark {
-                        egui::ThemePreference::Dark
-                    } else {
-                        egui::ThemePreference::Light
-                    });
+                    self.show_setup = false;
+                }
+            });
+        });
+        ui.add_space(6.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 8.0;
+
+                section(ui, lang.text("MAP"));
+                field(
+                    ui,
+                    lang.text("Layout"),
+                    lang.text("Classic is SpaceMonger's look. Squares are easier to compare."),
+                );
+                changed |= segmented(
+                    ui,
+                    &mut self.s.algo,
+                    &[
+                        (Algo::Classic, lang.text("Classic")),
+                        (Algo::Squarified, lang.text("Squares")),
+                    ],
+                );
+                field(
+                    ui,
+                    lang.text("Detail"),
+                    lang.text("How many small files get a block of their own."),
+                );
+                let mut d = match self.s.density {
+                    0 => 3,
+                    1 | 2 => 2,
+                    3 => 1,
+                    _ => 0,
+                };
+                if segmented(
+                    ui,
+                    &mut d,
+                    &[
+                        (0, lang.text("Less")),
+                        (1, lang.text("Normal")),
+                        (2, lang.text("More")),
+                        (3, lang.text("Max")),
+                    ],
+                ) {
+                    self.s.density = [4, 3, 1, 0][d];
                     changed = true;
                 }
-                ui.separator();
-                ui.strong(lang.text("3D view"));
-                changed |= ui
-                    .checkbox(
-                        &mut self.s.height_by_size,
-                        lang.text("Height proportional to file size"),
-                    )
-                    .changed();
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.s.height_scale, 0.2..=3.0)
-                            .text(lang.text("Height scale")),
-                    )
-                    .changed();
-                ui.separator();
-                ui.strong(lang.text("Miscellaneous"));
-                ui.checkbox(
-                    &mut self.s.animated,
-                    lang.text("Animated zoom in / zoom out"),
+                changed |= switch_row(ui, lang.text("Folder titles"), None, &mut self.s.headers);
+                let free_hint = if self.disk.is_some() {
+                    None
+                } else {
+                    Some(lang.text("Available when you scan a whole drive."))
+                };
+                ui.add_enabled_ui(self.disk.is_some(), |ui| {
+                    changed |= switch_row(
+                        ui,
+                        lang.text("Show free space"),
+                        free_hint,
+                        &mut self.s.show_free,
+                    );
+                });
+
+                section(ui, lang.text("APPEARANCE"));
+                field(ui, lang.text("Colors"), "");
+                ui.horizontal_wrapped(|ui| {
+                    for sc in Scheme::ALL {
+                        if pill(ui, lang.text(sc.label()), self.s.scheme == sc).clicked()
+                            && self.s.scheme != sc
+                        {
+                            self.s.scheme = sc;
+                            changed = true;
+                        }
+                    }
+                });
+                changed |= switch_row(ui, lang.text("Names on blocks"), None, &mut self.s.labels);
+                changed |= switch_row(ui, lang.text("Shading"), None, &mut self.s.bevel);
+                switch_row(ui, lang.text("Animations"), None, &mut self.s.animated);
+                switch_row(ui, lang.text("Tips on hover"), None, &mut self.s.tooltips);
+
+                section(ui, lang.text("3D VIEW"));
+                changed |= switch_row(
+                    ui,
+                    lang.text("Height by size"),
+                    Some(lang.text("Bigger files become taller towers.")),
+                    &mut self.s.height_by_size,
                 );
-                ui.checkbox(&mut self.s.tooltips, lang.text("Show tooltips"));
+                field(ui, lang.text("Tower height"), "");
+                let mut h = if self.s.height_scale < 0.75 {
+                    0
+                } else if self.s.height_scale < 1.5 {
+                    1
+                } else {
+                    2
+                };
+                if segmented(
+                    ui,
+                    &mut h,
+                    &[
+                        (0, lang.text("Low")),
+                        (1, lang.text("Medium")),
+                        (2, lang.text("High")),
+                    ],
+                ) {
+                    self.s.height_scale = [0.5, 1.0, 2.0][h];
+                    changed = true;
+                }
+
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    ui.checkbox(
+                    section(ui, lang.text("SCAN"));
+                    switch_row(
+                        ui,
+                        lang.text("Size on disk"),
+                        Some(lang.text(
+                            "Counts the space really used on the drive. Applies on the next scan.",
+                        )),
                         &mut self.s.size_on_disk,
-                        lang.text("Measure size on disk (clusters/blocks) – applies on next scan"),
                     );
-                    ui.checkbox(
+                    switch_row(
+                        ui,
+                        lang.text("Allow deleting"),
+                        Some(lang.text(
+                            "Adds a Delete button to the details panel. Deleting is permanent.",
+                        )),
                         &mut self.s.delete_enabled,
-                        lang.text("Enable the Delete command (permanent!)"),
                     );
                 }
+
+                section(ui, lang.text("LANGUAGE"));
+                let mut l = self.language;
+                if segmented(
+                    ui,
+                    &mut l,
+                    &[(Language::PtBr, "Português"), (Language::EnUs, "English")],
+                ) {
+                    self.language = l;
+                    l.save();
+                    self.scene = None;
+                    changed = true;
+                }
+
+                ui.add_space(18.0);
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(localized_format!(
+                        lang,
+                        "Space Hunter {} · free and open source",
+                        "Space Hunter {} · gratuito e de código aberto",
+                        env!("CARGO_PKG_VERSION")
+                    ))
+                    .color(MUTED)
+                    .small(),
+                );
+                ui.label(
+                    egui::RichText::new(lang.text(
+                        "Double-click: open folder · Backspace: back · Ctrl+O: open · F5: refresh",
+                    ))
+                    .color(MUTED)
+                    .small(),
+                );
+                ui.hyperlink_to(
+                    egui::RichText::new("github.com/quisen/SpaceHunter").small(),
+                    "https://github.com/quisen/SpaceHunter",
+                );
             });
         if changed {
             self.rev += 1;
         }
-        self.show_setup = open;
-    }
-
-    fn about_window(&mut self, ctx: &egui::Context) {
-        let lang = self.language;
-        let mut open = self.show_about;
-        egui::Window::new(lang.text("About SpaceHunter"))
-            .open(&mut open)
-            .resizable(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.heading("SpaceHunter");
-                ui.label(localized_format!(
-                    lang,
-                    "Version {}",
-                    "Versão {}",
-                    env!("CARGO_PKG_VERSION")
-                ));
-                ui.label(
-                    lang.text(
-                        "A fast, modern take on the classic SpaceMonger disk-space visualiser.",
-                    ),
-                );
-                ui.add_space(6.0);
-                ui.label(lang.text("• Parallel Rust scanner, squarified treemap, 2D and 3D views"));
-                ui.label(lang.text("• Double-click a folder to zoom in · Backspace to zoom out"));
-                ui.label(lang.text("• 3D: drag to orbit, right-drag to pan, wheel to zoom"));
-                ui.add_space(6.0);
-                ui.hyperlink_to(
-                    "github.com/quisen/SpaceHunter",
-                    "https://github.com/quisen/SpaceHunter",
-                );
-            });
-        self.show_about = open;
     }
 
     fn delete_dialog(&mut self, ctx: &egui::Context) {
@@ -1668,7 +1714,7 @@ impl SpaceHunter {
             ui.set_width(size.x - 42.0);
             ui.vertical_centered(|ui| {
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new("SpaceHunter").size(32.0).strong());
+                ui.label(egui::RichText::new("Space Hunter").size(32.0).strong());
                 ui.label(
                     egui::RichText::new(lang.text("See where your disk space went.")).color(MUTED),
                 );
@@ -1774,17 +1820,13 @@ impl SpaceHunter {
                             fmt::size(total),
                             free as f64 / total.max(1) as f64 * 100.0
                         ));
-                        ui.separator();
+                        ui.label(egui::RichText::new("·").color(MUTED));
                     }
                     ui.label(
-                        egui::RichText::new(localized_format!(
-                            lang,
-                            "{} blocks · layout {:.1} ms",
-                            "{} blocos · mapa {:.1} ms",
-                            self.cells.len(),
-                            self.layout_ms
-                        ))
-                        .weak(),
+                        egui::RichText::new(
+                            lang.text("Click for details · Double-click to explore"),
+                        )
+                        .color(MUTED),
                     );
                 });
             } else {
@@ -1807,6 +1849,8 @@ pub const HAIR: Color32 = Color32::from_rgb(38, 43, 57);
 pub const TEXT: Color32 = Color32::from_rgb(222, 228, 240);
 pub const MUTED: Color32 = Color32::from_rgb(133, 143, 165);
 pub const ACCENT: Color32 = Color32::from_rgb(171, 137, 239);
+pub const DANGER: Color32 = Color32::from_rgb(240, 100, 100);
+const HAIR_STRONG: Color32 = Color32::from_rgb(70, 78, 98);
 const ACCENT_DIM: Color32 = Color32::from_rgb(64, 43, 100);
 
 fn apply_theme(ctx: &egui::Context) {
@@ -1907,6 +1951,120 @@ fn pill(ui: &mut egui::Ui, label: &str, sel: bool) -> egui::Response {
     ui.add(b)
 }
 
+/// Small uppercase heading for a settings group.
+fn section(ui: &mut egui::Ui, title: &str) {
+    ui.add_space(14.0);
+    ui.label(egui::RichText::new(title).size(11.0).color(ACCENT).strong());
+}
+
+/// Title (and optional hint) above a control that gets its own line.
+fn field(ui: &mut egui::Ui, title: &str, hint: &str) {
+    ui.add_space(2.0);
+    ui.label(title);
+    if !hint.is_empty() {
+        ui.add_space(-6.0);
+        ui.label(egui::RichText::new(hint).small().color(MUTED));
+    }
+}
+
+/// "Label ........ [switch]" row. Returns true when toggled.
+fn switch_row(ui: &mut egui::Ui, title: &str, hint: Option<&str>, on: &mut bool) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(title);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            changed = toggle(ui, on).changed();
+        });
+    });
+    if let Some(h) = hint {
+        ui.add_space(-6.0);
+        ui.label(egui::RichText::new(h).small().color(MUTED));
+    }
+    changed
+}
+
+fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+    let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgb(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()))
+}
+
+/// iOS-style on/off switch.
+fn toggle(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+    let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(38.0, 22.0), Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    let t = ui.ctx().animate_bool(resp.id, *on);
+    let dim = if ui.is_enabled() { 1.0 } else { 0.4 };
+    let track = mix(HAIR_STRONG, ACCENT, t).gamma_multiply(dim);
+    let p = ui.painter();
+    p.rect_filled(rect, 11.0, track);
+    let x = egui::lerp((rect.left() + 11.0)..=(rect.right() - 11.0), t);
+    p.circle_filled(
+        egui::pos2(x, rect.center().y),
+        8.0,
+        Color32::WHITE.gamma_multiply(dim),
+    );
+    resp
+}
+
+/// Joined button group; always drawn left-to-right, whatever the parent layout.
+fn segmented<T: PartialEq + Copy>(ui: &mut egui::Ui, value: &mut T, options: &[(T, &str)]) -> bool {
+    let font = FontId::proportional(13.0);
+    let (pad, h) = (12.0, 28.0);
+    let galleys: Vec<_> = options
+        .iter()
+        .map(|(_, l)| {
+            ui.painter()
+                .layout_no_wrap(l.to_string(), font.clone(), TEXT)
+        })
+        .collect();
+    let widths: Vec<f32> = galleys.iter().map(|g| g.size().x + pad * 2.0).collect();
+    let total = widths.iter().sum::<f32>() + 4.0;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(total, h), Sense::hover());
+    let id = ui.id().with(("seg", rect.min.x as i32, rect.min.y as i32));
+    ui.painter().rect(
+        rect,
+        8.0,
+        BG,
+        Stroke::new(1.0, HAIR),
+        egui::StrokeKind::Inside,
+    );
+    let mut x = rect.left() + 2.0;
+    let mut changed = false;
+    for (i, (opt, _)) in options.iter().enumerate() {
+        let r = Rect::from_min_size(
+            egui::pos2(x, rect.top() + 2.0),
+            egui::vec2(widths[i], h - 4.0),
+        );
+        x += widths[i];
+        let resp = ui.interact(r, id.with(i), Sense::click());
+        let sel = *value == *opt;
+        if sel {
+            ui.painter().rect_filled(r, 6.0, ACCENT_DIM);
+        } else if resp.hovered() {
+            ui.painter().rect_filled(r, 6.0, CARD);
+        }
+        let col = if sel {
+            Color32::WHITE
+        } else if resp.hovered() {
+            TEXT
+        } else {
+            MUTED
+        };
+        let g = ui
+            .painter()
+            .layout_no_wrap(options[i].1.to_string(), font.clone(), col);
+        ui.painter().galley(r.center() - g.size() / 2.0, g, col);
+        if resp.clicked() && !sel {
+            *value = *opt;
+            changed = true;
+        }
+    }
+    changed
+}
+
 pub fn group(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
@@ -1943,6 +2101,9 @@ impl eframe::App for SpaceHunter {
         let canvas = self.cells_key.map_or(fake_canvas, |k| {
             Rect::from_min_size(Pos2::ZERO, egui::vec2(k.w as f32, k.h as f32))
         });
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.show_setup = false;
+        }
         if open {
             self.open_dialog(&ctx);
         }
@@ -1975,12 +2136,20 @@ impl eframe::App for SpaceHunter {
                     .stroke(Stroke::new(1.0, HAIR)),
             )
             .show(ui, |ui| {
-                self.toolbar(ui, canvas);
-                if self.tree.is_some() {
-                    ui.add_space(4.0);
-                    self.breadcrumb(ui, canvas);
-                }
+                self.toolbar(ui);
             });
+        if self.tree.is_some() {
+            egui::Panel::top("crumbs")
+                .frame(
+                    egui::Frame::new()
+                        .fill(BG)
+                        .inner_margin(egui::Margin::symmetric(10, 6))
+                        .stroke(Stroke::new(1.0, HAIR)),
+                )
+                .show(ui, |ui| {
+                    self.breadcrumb(ui, canvas);
+                });
+        }
         egui::Panel::bottom("status")
             .frame(
                 egui::Frame::new()
@@ -1991,7 +2160,20 @@ impl eframe::App for SpaceHunter {
             .show(ui, |ui| {
                 self.status_bar(ui);
             });
-        if self.show_side && self.tree.is_some() {
+        if self.show_setup {
+            egui::Panel::right("settings")
+                .frame(
+                    egui::Frame::new()
+                        .fill(PANEL)
+                        .inner_margin(egui::Margin::same(18))
+                        .stroke(Stroke::new(1.0, HAIR)),
+                )
+                .resizable(false)
+                .default_size(330.0)
+                .show(ui, |ui| {
+                    self.settings_panel(ui);
+                });
+        } else if self.show_side && self.tree.is_some() {
             egui::Panel::right("side")
                 .frame(
                     egui::Frame::new()
@@ -2011,8 +2193,6 @@ impl eframe::App for SpaceHunter {
                 self.canvas(ui);
             });
 
-        self.setup_window(&ctx);
-        self.about_window(&ctx);
         self.delete_dialog(&ctx);
 
         if let Some((msg, t0)) = &self.toast {
