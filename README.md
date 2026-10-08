@@ -39,6 +39,13 @@ cargo zigbuild --release --target x86_64-pc-windows-gnu -p spacehunter --bin spa
 # PWA (needs: rustup target add wasm32-unknown-unknown; cargo install wasm-bindgen-cli)
 ./scripts/build-web.sh && python3 -m http.server -d dist 8080   # http://localhost:8080
 ```
+### Deploy the PWA (Cloudflare Workers)
+`dist/` is generated, not committed, so build first and deploy that folder:
+```sh
+./scripts/build-web.sh && npx wrangler deploy   # uses wrangler.jsonc → assets: ./dist
+```
+The worker must serve `index.html`, `spacehunter.js`, `spacehunter_bg.wasm`, `sw.js`, `manifest.webmanifest` and `icons/` from the same folder.
+
 The PWA needs HTTPS (or `localhost`) to be installable; folder access uses the File System Access API (Chromium) with an `<input webkitdirectory>` fallback elsewhere.
 
 ## Layout

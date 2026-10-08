@@ -1,0 +1,6 @@
+{
+  // Deploy: ./scripts/build-web.sh && npx wrangler deploy
+  "name": "spacehunter",
+  "compatibility_date": "2026-01-01",
+  "assets": { "directory": "./dist" }
+}
